@@ -94,9 +94,12 @@ public class ImageProcessingTool implements UltimateTool {
             for (int i = 0; i < inputs.size(); i++) {
                 // Generated names keep ImageMagick path syntax out of user-controlled filenames.
                 Path stagedInput = scratch.resolve("input-" + i);
-                Files.copy(inputs.get(i), stagedInput);
-                if (Files.size(stagedInput) > MAX_BYTES) {
-                    throw new IllegalArgumentException("Input grew beyond the 20 MiB limit.");
+                try (InputStream input = Files.newInputStream(inputs.get(i), LinkOption.NOFOLLOW_LINKS)) {
+                    byte[] contents = input.readNBytes((int) MAX_BYTES + 1);
+                    if (contents.length > MAX_BYTES) {
+                        throw new IllegalArgumentException("Input grew beyond the 20 MiB limit.");
+                    }
+                    Files.write(stagedInput, contents);
                 }
                 String coder = detectFormat(stagedInput);
                 Path stagedOutput = Files.createFile(scratch.resolve("output-" + i + "." + format)).toRealPath();
@@ -115,12 +118,12 @@ public class ImageProcessingTool implements UltimateTool {
                 }
                 stagedOutputs.add(stagedOutput);
             }
-            // Publish only once every input has succeeded. Files.move has no replacement option.
+            // An exclusive hard link publishes a complete file without a check-then-rename race.
             for (int i = 0; i < destinations.size(); i++) {
                 if (!output.equals(resolve(workspace, outputDirectory))) {
                     throw new IOException("Output directory changed during processing.");
                 }
-                Files.move(stagedOutputs.get(i), destinations.get(i));
+                Files.createLink(destinations.get(i), stagedOutputs.get(i));
                 published.add(destinations.get(i));
             }
             result = "Image processing completed: " + published.stream()
@@ -271,21 +274,24 @@ public class ImageProcessingTool implements UltimateTool {
         } finally {
             try {
                 if (process.isAlive()) {
-                process.descendants().forEach(ProcessHandle::destroyForcibly);
-                process.destroyForcibly();
-                // waitFor clears interruption; keep cleanup bounded when cancellation arrives.
-                boolean interrupted = Thread.interrupted();
-                try {
-                    process.waitFor(2, TimeUnit.SECONDS);
-                } finally {
-                    if (interrupted) {
-                        Thread.currentThread().interrupt();
+                    process.descendants().forEach(ProcessHandle::destroyForcibly);
+                    process.destroyForcibly();
+                    // Preserve cancellation while allowing a bounded process teardown.
+                    boolean interrupted = Thread.interrupted();
+                    try {
+                        process.waitFor(2, TimeUnit.SECONDS);
+                    } finally {
+                        if (interrupted) {
+                            Thread.currentThread().interrupt();
+                        }
                     }
                 }
-            }
             } finally {
-                process.getInputStream().close();
-                drain.interrupt();
+                try {
+                    process.getInputStream().close();
+                } finally {
+                    drain.interrupt();
+                }
             }
         }
     }

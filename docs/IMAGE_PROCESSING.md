@@ -46,7 +46,9 @@ Every batch uses its own temporary directory. Generated intermediate files and
 pixel caches are removed in a finally block, including failure and interruption
 paths. Original inputs remain intact. Successful outputs remain in the requested
 directory for subsequent tools. No output is published until all transformations
-succeed; a publication failure rolls back outputs created by that call.
+succeed. Publication uses exclusive hard links, so scratch and output directories
+must share a filesystem that supports hard links. A competing destination fails
+atomically; a publication failure rolls back outputs created by that call.
 
 The managed-root check provides filesystem confinement, not tenant
 authentication. The caller/service must select the authorized workspace and

@@ -217,6 +217,81 @@ class ImageProcessingToolTest {
     }
 
     @Test
+    void interruptionPreservesFlagAndCleansScratch() throws Exception {
+        Path workspace = workspace();
+        ImageProcessingTool tool = tool((command, scratch, timeout) -> {
+            throw new InterruptedException("cancelled");
+        });
+        try {
+            assertThat(process(tool, workspace, List.of("input.png"), "results")).contains("interrupted");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+        assertClean(workspace);
+    }
+
+    @Test
+    void rejectsInputReplacedWithExternalSymlinkAfterValidation() throws Exception {
+        Path workspace = workspace();
+        Path second = Files.copy(workspace.resolve("input.png"), workspace.resolve("second.png"));
+        Path external = Files.copy(workspace.resolve("input.png"), temporary.resolve("outside.png"));
+        try {
+            Path probe = Files.createSymbolicLink(workspace.resolve("probe.png"), external);
+            Files.delete(probe);
+        } catch (UnsupportedOperationException | IOException e) {
+            assumeTrue(false, "Host cannot create symbolic links");
+        }
+        AtomicInteger calls = new AtomicInteger();
+        ImageProcessingTool tool = tool((command, scratch, timeout) -> {
+            calls.incrementAndGet();
+            Files.writeString(outputFile(command), "processed");
+            Files.delete(second);
+            Files.createSymbolicLink(second, external);
+            return new ImageProcessingTool.Execution(0, false);
+        });
+        assertThat(process(tool, workspace, List.of("input.png", "second.png"), "results"))
+                .contains("Image Processing Error");
+        assertThat(calls).hasValue(1);
+        assertThat(workspace.resolve("results/result-1.webp")).doesNotExist();
+        assertClean(workspace);
+    }
+
+    @Test
+    void successfulExitWithoutOutputIsAnError() throws Exception {
+        Path workspace = workspace();
+        ImageProcessingTool tool = tool((command, scratch, timeout) -> new ImageProcessingTool.Execution(0, false));
+        assertThat(process(tool, workspace, List.of("input.png"), "results")).contains("output is empty");
+        assertThat(workspace.resolve("results/result-1.webp")).doesNotExist();
+        assertClean(workspace);
+    }
+
+    @Test
+    void simultaneousSameDestinationHasOneWinner() throws Exception {
+        Path workspace = workspace();
+        var ready = new java.util.concurrent.CyclicBarrier(2);
+        AtomicInteger identities = new AtomicInteger();
+        ImageProcessingTool tool = tool((command, scratch, timeout) -> {
+            Files.writeString(outputFile(command), "writer-" + identities.incrementAndGet());
+            try {
+                ready.await(5, TimeUnit.SECONDS);
+            } catch (java.util.concurrent.BrokenBarrierException | java.util.concurrent.TimeoutException e) {
+                throw new IOException(e);
+            }
+            return new ImageProcessingTool.Execution(0, false);
+        });
+        try (var pool = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = pool.submit(() -> process(tool, workspace, List.of("input.png"), "results"));
+            var second = pool.submit(() -> process(tool, workspace, List.of("input.png"), "results"));
+            List<String> results = List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+            assertThat(results.stream().filter(s -> s.startsWith("Image processing completed")).count()).isEqualTo(1L);
+            assertThat(results.stream().filter(s -> s.startsWith("Image Processing Error")).count()).isEqualTo(1L);
+        }
+        assertThat(Files.readString(workspace.resolve("results/result-1.webp"))).startsWith("writer-");
+        assertClean(workspace);
+    }
+
+    @Test
     void springDiscoversToolWithoutLaunchingNativeProcess() {
         try (var context = new AnnotationConfigApplicationContext(ImageProcessingTool.class)) {
             assertThat(context.getBeansOfType(ai.ultimate.tools.UltimateTool.class).values())
