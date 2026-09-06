@@ -94,6 +94,9 @@ public class ImageProcessingTool implements UltimateTool {
             for (int i = 0; i < inputs.size(); i++) {
                 // Generated names keep ImageMagick path syntax out of user-controlled filenames.
                 Path stagedInput = scratch.resolve("input-" + i);
+                if (!inputs.get(i).equals(inputs.get(i).toRealPath())) {
+                    throw new IllegalArgumentException("Input path changed during processing.");
+                }
                 try (InputStream input = Files.newInputStream(inputs.get(i), LinkOption.NOFOLLOW_LINKS)) {
                     byte[] contents = input.readNBytes((int) MAX_BYTES + 1);
                     if (contents.length > MAX_BYTES) {
