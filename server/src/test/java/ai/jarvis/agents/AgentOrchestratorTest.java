@@ -86,9 +86,11 @@ class AgentOrchestratorTest {
                 .countByAgentId(any(UUID.class)))
                 .thenReturn(Mono.just(1L));
 
+        // Both the PENDING -> RUNNING CAS and the terminal update pass null
+        // through optional result/error/duration slots depending on phase.
         when(agentRepository.updateStatus(
                 any(), anyString(), anyString(),
-                anyInt(), anyString(), isNull(), anyInt()))
+                anyInt(), any(), any(), any()))
                 .thenReturn(Mono.just(1));
 
         StepVerifier
@@ -132,9 +134,10 @@ class AgentOrchestratorTest {
                 .thenReturn(Flux.just(
                         AgentEvent.error("AI failed")));
 
+        // Accept both the start-transition CAS and the FAILED terminal update.
         when(agentRepository.updateStatus(
                 any(), anyString(), anyString(),
-                anyInt(), isNull(), anyString(), isNull()))
+                anyInt(), any(), any(), any()))
                 .thenReturn(Mono.just(1));
 
         StepVerifier
