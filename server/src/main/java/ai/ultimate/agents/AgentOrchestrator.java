@@ -74,16 +74,74 @@ public class AgentOrchestrator {
         long startTime =
                 System.currentTimeMillis();
 
-        // Create + persist Agent entity
         Agent newAgent = Agent.create(
                 userId, sessionId, goal);
 
         return r2dbcEntityTemplate
                 .insert(newAgent)
-                // Transition to RUNNING
-                .flatMap(agent ->
-                        r2dbcEntityTemplate
-                                .update(agent.withRunning()))
+                .flatMapMany(agent ->
+                        runPersistedAgent(
+                                agent,
+                                userId,
+                                startTime));
+    }
+
+    /**
+     * Persist an agent and launch its execution without
+     * tying the caller to the event stream.
+     *
+     * The returned Agent is the exact PENDING entity inserted
+     * into the database. Callers can safely return its ID and
+     * poll it while the independently subscribed execution
+     * transitions that same entity to RUNNING and terminal state.
+     *
+     * @param goal      user's task description
+     * @param userId    authenticated user
+     * @param sessionId optional chat session link
+     * @return Mono containing the persisted Agent identity
+     */
+    public Mono<Agent> startAgentAsync(
+            String goal,
+            UUID userId,
+            UUID sessionId) {
+
+        long startTime =
+                System.currentTimeMillis();
+
+        Agent newAgent = Agent.create(
+                userId, sessionId, goal);
+
+        return r2dbcEntityTemplate
+                .insert(newAgent)
+                .doOnNext(agent ->
+                        runPersistedAgent(
+                                agent,
+                                userId,
+                                startTime)
+                                .subscribe(
+                                        event -> {
+                                            // Execution side effects are
+                                            // tracked inside the stream.
+                                        },
+                                        error -> log.error(
+                                                "Async agent error: "
+                                                        + "id={} error={}",
+                                                agent.id(),
+                                                error.getMessage(),
+                                                error)));
+    }
+
+    /**
+     * Transition a previously persisted PENDING agent to RUNNING
+     * and execute it while maintaining terminal lifecycle state.
+     */
+    private Flux<AgentEvent> runPersistedAgent(
+            Agent pendingAgent,
+            UUID userId,
+            long startTime) {
+
+        return r2dbcEntityTemplate
+                .update(pendingAgent.withRunning())
                 .doOnSuccess(agent ->
                         log.info(
                                 "Agent started: id={} "
