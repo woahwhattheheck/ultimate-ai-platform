@@ -375,7 +375,30 @@ public class AgentOrchestrator {
                                     null,
                                     null,
                                     null)
-                            .then();
+                            .switchIfEmpty(Mono.error(
+                                    new IllegalStateException(
+                                            "Agent cancellation returned "
+                                                    + "no row count: "
+                                                    + agentId)))
+                            .flatMap(rows -> {
+                                if (rows == 1) {
+                                    return Mono.<Void>empty();
+                                }
+                                if (rows == 0) {
+                                    return Mono.error(
+                                            new ResponseStatusException(
+                                                    HttpStatus.CONFLICT,
+                                                    "Agent status changed "
+                                                            + "before cancellation"));
+                                }
+                                return Mono.error(
+                                        new IllegalStateException(
+                                                "Agent cancellation updated "
+                                                        + "unexpected rows="
+                                                        + rows
+                                                        + " id="
+                                                        + agentId));
+                            });
                 });
     }
 
