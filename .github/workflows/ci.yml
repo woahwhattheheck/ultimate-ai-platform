@@ -8,6 +8,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -26,7 +30,6 @@ jobs:
           POSTGRES_PASSWORD: ultimate
           POSTGRES_DB: ultimate
 
-      
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5433:5432
@@ -64,8 +67,8 @@ jobs:
         working-directory: server
         run: ./mvnw clean verify
         env:
-          DATABASE_URL: r2dbc:postgresql://localhost:5432/Ultimate
-          FLYWAY_URL: jdbc:postgresql://localhost:5432/Ultimate
+          DATABASE_URL: r2dbc:postgresql://localhost:5433/ultimate
+          FLYWAY_URL: jdbc:postgresql://localhost:5433/ultimate
           DATABASE_USERNAME: ultimate
           DATABASE_PASSWORD: ultimate
           Ultimate_JWT_SECRET: test-secret-key-minimum-32-chars-long-enough
