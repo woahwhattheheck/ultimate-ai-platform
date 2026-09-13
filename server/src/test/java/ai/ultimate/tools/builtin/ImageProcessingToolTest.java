@@ -301,7 +301,7 @@ class ImageProcessingToolTest {
             assumeTrue(false, "Host cannot create symbolic links: " + e.getMessage());
         }
 
-        ImageProcessingTool tool = new ImageProcessingTool(linkedRoot, "magick",
+           ImageProcessingTool tool = new ImageProcessingTool(linkedRoot, "magick",
                 (command, runtime, timeout) -> {
                     throw new AssertionError("Symlinked roots must fail before execution");
                 });
@@ -322,7 +322,7 @@ class ImageProcessingToolTest {
     @Test
     void nativeRunnerDrainsOutputWithoutDeadlockingAndEnforcesTimeout() throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        List<String> command = List.of(java, "-cp", System.getProperty("java.class.path"),
+        List<String> command = List.of(java, "-cp", absoluteClasspath(),
                 ProcessFixture.class.getName(), "finish");
         assertEquals(new ImageProcessingTool.Execution(0, false),
                 ImageProcessingTool.runCommand(command, temporary, Duration.ofSeconds(10)));
@@ -368,6 +368,15 @@ class ImageProcessingToolTest {
                     files.map(path -> path.getFileName().toString()).sorted().toList());
         }
         assertNoRuntime();
+    }
+
+
+    private static String absoluteClasspath() {
+        return java.util.Arrays.stream(
+                        System.getProperty("java.class.path").split(
+                                java.util.regex.Pattern.quote(java.io.File.pathSeparator)))
+                .map(entry -> Path.of(entry).toAbsolutePath().normalize().toString())
+                .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
     }
 
     public static class ProcessFixture {
