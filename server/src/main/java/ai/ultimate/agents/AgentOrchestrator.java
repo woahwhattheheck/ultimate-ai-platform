@@ -27,7 +27,7 @@ public class AgentOrchestrator {
     private final AgentRepository agentRepository;
     private final AgentStepRepository stepRepository;
     private final R2dbcEntityTemplate r2dbcEntityTemplate;
-    private final ConcurrentMap<UUID, Sinks.Empty<Void>> cancellationSignals =
+    private final ConcurrentMap<UUID, Sinks.One<Boolean>> cancellationSignals =
             new ConcurrentHashMap<>();
 
     /**
@@ -89,8 +89,8 @@ public class AgentOrchestrator {
             UUID userId,
             long startTime) {
 
-        Sinks.Empty<Void> cancellationSignal = Sinks.empty();
-        Sinks.Empty<Void> existing = cancellationSignals.putIfAbsent(
+        Sinks.One<Boolean> cancellationSignal = Sinks.one();
+        Sinks.One<Boolean> existing = cancellationSignals.putIfAbsent(
                 pendingAgent.id(), cancellationSignal);
         if (existing != null) {
             return Flux.error(new IllegalStateException(
@@ -155,7 +155,7 @@ public class AgentOrchestrator {
             Agent agent,
             UUID userId,
             long startTime,
-            Sinks.Empty<Void> cancellationSignal) {
+            Sinks.One<Boolean> cancellationSignal) {
 
         Flux<AgentEvent> execution = executor
                 .execute(agent, userId)
@@ -328,7 +328,7 @@ public class AgentOrchestrator {
      * Signal the active in-process publisher after lifecycle cancellation wins.
      */
     private void signalExecutionCancellation(UUID agentId) {
-        Sinks.Empty<Void> signal = cancellationSignals.get(agentId);
+        Sinks.One<Boolean> signal = cancellationSignals.get(agentId);
         if (signal == null) {
             log.debug(
                     "No active execution signal for cancelled agent: id={}",
@@ -336,7 +336,7 @@ public class AgentOrchestrator {
             return;
         }
 
-        Sinks.EmitResult result = signal.tryEmitEmpty();
+        Sinks.EmitResult result = signal.tryEmitValue(Boolean.TRUE);
         if (result != Sinks.EmitResult.OK
                 && result != Sinks.EmitResult.FAIL_TERMINATED) {
             log.warn(
