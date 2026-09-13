@@ -140,13 +140,43 @@ public class AgentOrchestrator {
             UUID userId,
             long startTime) {
 
-        return r2dbcEntityTemplate
-                .update(pendingAgent.withRunning())
-                .doOnSuccess(agent ->
+        return agentRepository
+                .updateStatus(
+                        pendingAgent.id(),
+                        AgentStatus.PENDING.name(),
+                        AgentStatus.RUNNING.name(),
+                        pendingAgent.stepCount(),
+                        null,
+                        null,
+                        null)
+                .switchIfEmpty(Mono.error(
+                        new IllegalStateException(
+                                "Agent RUNNING transition "
+                                        + "returned no row count: "
+                                        + pendingAgent.id())))
+                .flatMap(rows -> {
+                    if (rows == 0) {
                         log.info(
-                                "Agent started: id={} "
-                                        + "user={}",
-                                agent.id(), userId))
+                                "Agent launch skipped: id={} "
+                                        + "status changed before RUNNING",
+                                pendingAgent.id());
+                        return Mono.<Agent>empty();
+                    }
+                    if (rows != 1) {
+                        return Mono.error(
+                                new IllegalStateException(
+                                        "Agent RUNNING transition "
+                                                + "updated unexpected rows="
+                                                + rows
+                                                + " id="
+                                                + pendingAgent.id()));
+                    }
+                    Agent runningAgent = pendingAgent.withRunning();
+                    log.info(
+                            "Agent started: id={} user={}",
+                            runningAgent.id(), userId);
+                    return Mono.just(runningAgent);
+                })
                 .flatMapMany(agent ->
 
                         // Execute the ReACT loop
