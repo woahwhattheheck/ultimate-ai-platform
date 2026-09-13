@@ -132,114 +132,109 @@ public class AgentOrchestrator {
     }
 
     /**
-     * Transition a previously persisted PENDING agent to RUNNING
-     * and execute it while maintaining terminal lifecycle state.
+     * Atomically claim a previously persisted PENDING agent for
+     * execution, then maintain its terminal lifecycle state.
+     *
+     * Cancellation and startup both use compare-and-set status
+     * transitions. If cancellation wins while the agent is still
+     * PENDING, this claim updates zero rows and execution never
+     * reaches AgentExecutor.
      */
     private Flux<AgentEvent> runPersistedAgent(
             Agent pendingAgent,
             UUID userId,
             long startTime) {
 
-        return r2dbcEntityTemplate
-                .update(pendingAgent.withRunning())
-                .doOnSuccess(agent ->
+        return agentRepository
+                .updateStatus(
+                        pendingAgent.id(),
+                        AgentStatus.PENDING.name(),
+                        AgentStatus.RUNNING.name(),
+                        pendingAgent.stepCount(),
+                        null,
+                        null,
+                        null)
+                .flatMapMany(rows -> {
+                    if (rows == 0) {
                         log.info(
-                                "Agent started: id={} "
-                                        + "user={}",
-                                agent.id(), userId))
-                .flatMapMany(agent ->
+                                "Agent start skipped after concurrent "
+                                        + "lifecycle transition: id={} user={}",
+                                pendingAgent.id(),
+                                userId);
+                        return Flux.empty();
+                    }
 
-                        // Execute the ReACT loop
-                        executor.execute(agent, userId)
+                    Agent agent = pendingAgent.withRunning();
+                    log.info(
+                            "Agent started: id={} user={}",
+                            agent.id(),
+                            userId);
 
-                                // Track FINAL event to
-                                // update DB to COMPLETED
-                                .doOnNext(event -> {
+                    // Execute the ReACT loop
+                    return executor.execute(agent, userId)
 
-                                    if (event.type() ==
-                                            AgentEvent.EventType.FINAL) {
+                            // Track FINAL event to
+                            // update DB to COMPLETED
+                            .doOnNext(event -> {
 
-                                        long duration =
-                                                System.currentTimeMillis()
-                                                        - startTime;
-                                        int durationMs =
-                                                (int) Math.min(
-                                                        duration,
-                                                        Integer.MAX_VALUE);
+                                if (event.type() ==
+                                        AgentEvent.EventType.FINAL) {
 
-                                        // Async DB update
-                                        // count steps then complete
-                                        stepRepository
-                                                .countByAgentId(
-                                                        agent.id())
-                                                .flatMap(count ->
-                                                        agentRepository
-                                                                .updateStatus(
-                                                                        agent.id(),
-                                                                        AgentStatus.RUNNING.name(),
-                                                                        AgentStatus.COMPLETED.name(),
-                                                                        count.intValue(),
-                                                                        event.data(),
-                                                                        null,
-                                                                        durationMs))
-                                                .doOnSuccess(rows -> {
-                                                    if (rows > 0) {
-                                                        log.info(
-                                                                "Agent COMPLETED: "
-                                                                        + "id={} "
-                                                                        + "duration={}ms",
-                                                                agent.id(),
-                                                                duration);
-                                                    } else {
-                                                        log.warn(
-                                                                "Agent COMPLETED "
-                                                                        + "but 0 rows updated "
-                                                                        + "(race condition?): "
-                                                                        + "id={}",
-                                                                agent.id());
-                                                    }
-                                                })
-                                                .doOnError(e ->
-                                                        log.error(
-                                                                "Failed to complete "
-                                                                        + "agent: id={} "
-                                                                        + "error={}",
-                                                                agent.id(),
-                                                                e.getMessage()))
-                                                .subscribe();
-                                    }
-                                })
+                                    long duration =
+                                            System.currentTimeMillis()
+                                                    - startTime;
+                                    int durationMs =
+                                            (int) Math.min(
+                                                    duration,
+                                                    Integer.MAX_VALUE);
 
-                                // On ERROR event → FAILED
-                                .doOnNext(event -> {
-                                    if (event.type() ==
-                                            AgentEvent.EventType.ERROR) {
+                                    // Async DB update
+                                    // count steps then complete
+                                    stepRepository
+                                            .countByAgentId(
+                                                    agent.id())
+                                            .flatMap(count ->
+                                                    agentRepository
+                                                            .updateStatus(
+                                                                    agent.id(),
+                                                                    AgentStatus.RUNNING.name(),
+                                                                    AgentStatus.COMPLETED.name(),
+                                                                    count.intValue(),
+                                                                    event.data(),
+                                                                    null,
+                                                                    durationMs))
+                                            .doOnSuccess(updatedRows -> {
+                                                if (updatedRows > 0) {
+                                                    log.info(
+                                                            "Agent COMPLETED: "
+                                                                    + "id={} "
+                                                                    + "duration={}ms",
+                                                            agent.id(),
+                                                            duration);
+                                                } else {
+                                                    log.warn(
+                                                            "Agent COMPLETED "
+                                                                    + "but 0 rows updated "
+                                                                    + "(race condition?): "
+                                                                    + "id={}",
+                                                            agent.id());
+                                                }
+                                            })
+                                            .doOnError(e ->
+                                                    log.error(
+                                                            "Failed to complete "
+                                                                    + "agent: id={} "
+                                                                    + "error={}",
+                                                            agent.id(),
+                                                            e.getMessage()))
+                                            .subscribe();
+                                }
+                            })
 
-                                        agentRepository
-                                                .updateStatus(
-                                                        agent.id(),
-                                                        AgentStatus.RUNNING.name(),
-                                                        AgentStatus.FAILED.name(),
-                                                        agent.stepCount(),
-                                                        null,
-                                                        event.data(),
-                                                        null)
-                                                .doOnError(e ->
-                                                        log.error(
-                                                                "Failed to mark agent "
-                                                                        + "as FAILED: id={}",
-                                                                agent.id()))
-                                                .subscribe();
-                                    }
-                                })
-
-                                // On stream error → FAILED
-                                .doOnError(error -> {
-                                    log.error(
-                                            "Agent stream error: "
-                                                    + "id={} error={}",
-                                            agent.id(),
-                                            error.getMessage());
+                            // On ERROR event → FAILED
+                            .doOnNext(event -> {
+                                if (event.type() ==
+                                        AgentEvent.EventType.ERROR) {
 
                                     agentRepository
                                             .updateStatus(
@@ -248,11 +243,37 @@ public class AgentOrchestrator {
                                                     AgentStatus.FAILED.name(),
                                                     agent.stepCount(),
                                                     null,
-                                                    error.getMessage(),
+                                                    event.data(),
                                                     null)
+                                            .doOnError(e ->
+                                                    log.error(
+                                                            "Failed to mark agent "
+                                                                    + "as FAILED: id={}",
+                                                            agent.id()))
                                             .subscribe();
-                                })
-                );
+                                }
+                            })
+
+                            // On stream error → FAILED
+                            .doOnError(error -> {
+                                log.error(
+                                        "Agent stream error: "
+                                                + "id={} error={}",
+                                        agent.id(),
+                                        error.getMessage());
+
+                                agentRepository
+                                        .updateStatus(
+                                                agent.id(),
+                                                AgentStatus.RUNNING.name(),
+                                                AgentStatus.FAILED.name(),
+                                                agent.stepCount(),
+                                                null,
+                                                error.getMessage(),
+                                                null)
+                                        .subscribe();
+                            });
+                });
     }
 
     /**
