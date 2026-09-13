@@ -162,6 +162,10 @@ public class AgentOrchestrator {
                                         long duration =
                                                 System.currentTimeMillis()
                                                         - startTime;
+                                        int durationMs =
+                                                (int) Math.min(
+                                                        duration,
+                                                        Integer.MAX_VALUE);
 
                                         // Async DB update
                                         // count steps then complete
@@ -176,7 +180,8 @@ public class AgentOrchestrator {
                                                                         AgentStatus.COMPLETED.name(),
                                                                         count.intValue(),
                                                                         event.data(),
-                                                                        null))
+                                                                        null,
+                                                                        durationMs))
                                                 .doOnSuccess(rows -> {
                                                     if (rows > 0) {
                                                         log.info(
@@ -217,7 +222,8 @@ public class AgentOrchestrator {
                                                         AgentStatus.FAILED.name(),
                                                         agent.stepCount(),
                                                         null,
-                                                        event.data())
+                                                        event.data(),
+                                                        null)
                                                 .doOnError(e ->
                                                         log.error(
                                                                 "Failed to mark agent "
@@ -242,7 +248,8 @@ public class AgentOrchestrator {
                                                     AgentStatus.FAILED.name(),
                                                     agent.stepCount(),
                                                     null,
-                                                    error.getMessage())
+                                                    error.getMessage(),
+                                                    null)
                                             .subscribe();
                                 })
                 );
@@ -335,6 +342,7 @@ public class AgentOrchestrator {
                                     agent.status().name(),
                                     AgentStatus.CANCELLED.name(),
                                     agent.stepCount(),
+                                    null,
                                     null,
                                     null)
                             .then();
