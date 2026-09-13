@@ -8,9 +8,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Coordinates persisted agent lifecycle and execution.
@@ -24,6 +27,8 @@ public class AgentOrchestrator {
     private final AgentRepository agentRepository;
     private final AgentStepRepository stepRepository;
     private final R2dbcEntityTemplate r2dbcEntityTemplate;
+    private final ConcurrentMap<UUID, Sinks.One<Boolean>> cancellationSignals =
+            new ConcurrentHashMap<>();
 
     /**
      * Persist an agent and stream its execution events.
@@ -84,6 +89,15 @@ public class AgentOrchestrator {
             UUID userId,
             long startTime) {
 
+        Sinks.One<Boolean> cancellationSignal = Sinks.one();
+        Sinks.One<Boolean> existing = cancellationSignals.putIfAbsent(
+                pendingAgent.id(), cancellationSignal);
+        if (existing != null) {
+            return Flux.error(new IllegalStateException(
+                    "Agent execution already registered: "
+                            + pendingAgent.id()));
+        }
+
         return agentRepository
                 .updateStatus(
                         pendingAgent.id(),
@@ -126,7 +140,12 @@ public class AgentOrchestrator {
                         executePersistedAgent(
                                 agent,
                                 userId,
-                                startTime));
+                                startTime,
+                                cancellationSignal))
+                .doFinally(signalType ->
+                        cancellationSignals.remove(
+                                pendingAgent.id(),
+                                cancellationSignal));
     }
 
     /**
@@ -135,10 +154,12 @@ public class AgentOrchestrator {
     private Flux<AgentEvent> executePersistedAgent(
             Agent agent,
             UUID userId,
-            long startTime) {
+            long startTime,
+            Sinks.One<Boolean> cancellationSignal) {
 
         Flux<AgentEvent> execution = executor
                 .execute(agent, userId)
+                .takeUntilOther(cancellationSignal.asMono())
                 .onErrorResume(error ->
                         persistFailure(
                                 agent,
@@ -147,7 +168,12 @@ public class AgentOrchestrator {
                                     persistenceError.addSuppressed(error);
                                     return persistenceError;
                                 })
-                                .then(Mono.<AgentEvent>error(error)));
+                                .flatMap(persisted -> {
+                                    if (!persisted) {
+                                        return Mono.<AgentEvent>empty();
+                                    }
+                                    return Mono.<AgentEvent>error(error);
+                                }));
 
         return execution.concatMap(event ->
                 persistTerminalEvent(
@@ -179,12 +205,18 @@ public class AgentOrchestrator {
                                     event.data(),
                                     null,
                                     durationMs))
-                    .thenReturn(event);
+                    .flatMap(persisted ->
+                            persisted
+                                    ? Mono.just(event)
+                                    : Mono.empty());
         }
 
         if (event.type() == AgentEvent.EventType.ERROR) {
             return persistFailure(agent, event.data())
-                    .thenReturn(event);
+                    .flatMap(persisted ->
+                            persisted
+                                    ? Mono.just(event)
+                                    : Mono.empty());
         }
 
         return Mono.just(event);
@@ -193,7 +225,7 @@ public class AgentOrchestrator {
     /**
      * Persist FAILED with the authoritative step count.
      */
-    private Mono<Void> persistFailure(
+    private Mono<Boolean> persistFailure(
             Agent agent,
             String message) {
 
@@ -233,9 +265,9 @@ public class AgentOrchestrator {
     }
 
     /**
-     * Apply a terminal compare-and-set and validate its row count.
+     * Apply a terminal compare-and-set and report whether it won.
      */
-    private Mono<Void> transitionTerminal(
+    private Mono<Boolean> transitionTerminal(
             Agent agent,
             AgentStatus target,
             int stepCount,
@@ -265,16 +297,16 @@ public class AgentOrchestrator {
                                 target,
                                 agent.id(),
                                 stepCount);
-                        return Mono.<Void>empty();
+                        return Mono.just(true);
                     }
                     if (rows == 0) {
                         log.warn(
                                 "Agent {} lost status race: id={}",
                                 target,
                                 agent.id());
-                        return Mono.<Void>empty();
+                        return Mono.just(false);
                     }
-                    return Mono.<Void>error(
+                    return Mono.error(
                             new IllegalStateException(
                                     "Agent " + target
                                             + " transition updated "
@@ -290,6 +322,28 @@ public class AgentOrchestrator {
         return message == null || message.isBlank()
                 ? error.getClass().getSimpleName()
                 : message;
+    }
+
+    /**
+     * Signal the active in-process publisher after lifecycle cancellation wins.
+     */
+    private void signalExecutionCancellation(UUID agentId) {
+        Sinks.One<Boolean> signal = cancellationSignals.get(agentId);
+        if (signal == null) {
+            log.debug(
+                    "No active execution signal for cancelled agent: id={}",
+                    agentId);
+            return;
+        }
+
+        Sinks.EmitResult result = signal.tryEmitValue(Boolean.TRUE);
+        if (result != Sinks.EmitResult.OK
+                && result != Sinks.EmitResult.FAIL_TERMINATED) {
+            log.warn(
+                    "Agent cancellation signal result: id={} result={}",
+                    agentId,
+                    result);
+        }
     }
 
     /**
@@ -372,6 +426,7 @@ public class AgentOrchestrator {
                                                     + agentId)))
                             .flatMap(rows -> {
                                 if (rows == 1) {
+                                    signalExecutionCancellation(agentId);
                                     return Mono.<Void>empty();
                                 }
                                 if (rows == 0) {
