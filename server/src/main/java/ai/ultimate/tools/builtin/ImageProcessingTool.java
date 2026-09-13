@@ -19,13 +19,19 @@ import java.nio.file.Path;
 import java.nio.file.SecureDirectoryStream;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -91,12 +97,11 @@ public class ImageProcessingTool implements UltimateTool {
                         "Source workspace must be an existing directory below the managed root.");
             }
 
-            List<Path> inputs = new ArrayList<>();
-            Set<Path> seen = new HashSet<>();
+            List<SecureInput> inputs = new ArrayList<>();
+            Set<Object> seen = new HashSet<>();
             for (String inputPath : inputPaths) {
-                Path input = resolveInput(workspace, inputPath);
-                if (!Files.isRegularFile(input, LinkOption.NOFOLLOW_LINKS)
-                        || Files.size(input) > MAX_INPUT_BYTES || !seen.add(input)) {
+                SecureInput input = snapshotInput(resolveInput(workspace, inputPath));
+                if (!seen.add(input.fileKey())) {
                     throw new IllegalArgumentException(
                             "Inputs must be distinct regular files of at most 20 MiB each.");
                 }
@@ -108,7 +113,7 @@ public class ImageProcessingTool implements UltimateTool {
             long totalOutputBytes = 0;
 
             for (int i = 0; i < inputs.size(); i++) {
-                Path original = inputs.get(i);
+                SecureInput original = inputs.get(i);
                 byte[] contents = readInputSecure(original);
 
                 Path stagedInput = runtime.resolve("input-" + i);
@@ -149,7 +154,7 @@ public class ImageProcessingTool implements UltimateTool {
                 }
 
                 String name = outputPrefix + "-" + (i + 1) + "." + format;
-                artifacts.add("{\"name\":\"" + name + "\",\"encoding\":\"base64\"," 
+                artifacts.add("{\"name\":\"" + name + "\",\"encoding\":\"base64\","
                         + "\"bytes\":" + output.length + ",\"data\":\""
                         + Base64.getEncoder().encodeToString(output) + "\"}");
             }
@@ -232,36 +237,50 @@ public class ImageProcessingTool implements UltimateTool {
         return real;
     }
 
-    static byte[] readInputSecure(Path input) throws IOException {
+    static SecureInput snapshotInput(Path input) throws IOException {
+        SecureInput metadata = snapshotInputMetadata(input);
+        byte[] contents = readInputSecure(metadata);
+        return new SecureInput(metadata.path(), metadata.directoryKeys(), metadata.fileKey(),
+                metadata.size(), metadata.lastModifiedTime(), sha256(contents));
+    }
+
+    private static SecureInput snapshotInputMetadata(Path input) throws IOException {
         Path absolute = input.toAbsolutePath().normalize();
         Path parent = absolute.getParent();
-        if (parent == null || absolute.getFileName() == null) {
+        Path filesystemRoot = absolute.getRoot();
+        if (parent == null || filesystemRoot == null || absolute.getFileName() == null) {
             throw new IOException("Input path has no secure parent directory.");
         }
 
-        try (SecureDirectoryStream<Path> directory = openSecureDirectory(parent)) {
-            Set<OpenOption> options = Set.of(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
-            try (SeekableByteChannel channel =
-                         directory.newByteChannel(absolute.getFileName(), options);
-                 InputStream stream = Channels.newInputStream(channel)) {
-                if (channel.size() > MAX_INPUT_BYTES) {
-                    throw new IllegalArgumentException("Input grew beyond the 20 MiB limit.");
-                }
-                byte[] contents = stream.readNBytes((int) MAX_INPUT_BYTES + 1);
-                if (contents.length > MAX_INPUT_BYTES) {
-                    throw new IllegalArgumentException("Input grew beyond the 20 MiB limit.");
-                }
-                return contents;
-            }
+        List<Object> directoryKeys = new ArrayList<>();
+        BasicFileAttributes rootAttributes = Files.readAttributes(
+                filesystemRoot, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        directoryKeys.add(requireDirectoryKey(rootAttributes));
+        Path current = filesystemRoot;
+        for (Path component : parent) {
+            current = current.resolve(component);
+            BasicFileAttributes attributes = Files.readAttributes(
+                    current, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            directoryKeys.add(requireDirectoryKey(attributes));
         }
+
+        BasicFileAttributes attributes = Files.readAttributes(
+                absolute, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        if (!attributes.isRegularFile() || attributes.size() > MAX_INPUT_BYTES) {
+            throw new IllegalArgumentException(
+                    "Inputs must be distinct regular files of at most 20 MiB each.");
+        }
+        Object fileKey = requireFileKey(attributes, "input file");
+        return new SecureInput(absolute, List.copyOf(directoryKeys), fileKey,
+                attributes.size(), attributes.lastModifiedTime(), null);
     }
 
-    @SuppressWarnings("unchecked")
-    private static SecureDirectoryStream<Path> openSecureDirectory(Path directory) throws IOException {
-        Path absolute = directory.toAbsolutePath().normalize();
+    static byte[] readInputSecure(SecureInput input) throws IOException {
+        Path absolute = input.path();
+        Path parent = absolute.getParent();
         Path filesystemRoot = absolute.getRoot();
-        if (filesystemRoot == null) {
-            throw new IOException("Secure directory traversal requires an absolute path.");
+        if (parent == null || filesystemRoot == null || absolute.getFileName() == null) {
+            throw new IOException("Input path has no secure parent directory.");
         }
 
         DirectoryStream<Path> stream = Files.newDirectoryStream(filesystemRoot);
@@ -271,18 +290,118 @@ public class ImageProcessingTool implements UltimateTool {
                     "Secure directory traversal is unavailable on this filesystem.");
         }
 
+        @SuppressWarnings("unchecked")
         SecureDirectoryStream<Path> current = (SecureDirectoryStream<Path>) stream;
         try {
-            for (Path component : absolute) {
+            if (input.directoryKeys().isEmpty()) {
+                throw new IOException("Secure input directory identity is incomplete.");
+            }
+            requireDirectoryIdentity(readAttributes(current, Path.of(".")),
+                    input.directoryKeys().getFirst());
+            int identityIndex = 1;
+            for (Path component : parent) {
+                if (identityIndex >= input.directoryKeys().size()) {
+                    throw new IOException("Secure input directory identity is incomplete.");
+                }
+                Object expectedKey = input.directoryKeys().get(identityIndex++);
+                requireDirectoryIdentity(readAttributes(current, component), expectedKey);
+
                 SecureDirectoryStream<Path> next =
                         current.newDirectoryStream(component, LinkOption.NOFOLLOW_LINKS);
-                current.close();
+                boolean accepted = false;
+                try {
+                    requireDirectoryIdentity(readAttributes(next, Path.of(".")), expectedKey);
+                    accepted = true;
+                } finally {
+                    if (!accepted) {
+                        next.close();
+                    }
+                }
+                SecureDirectoryStream<Path> previous = current;
                 current = next;
+                previous.close();
             }
-            return current;
-        } catch (IOException | RuntimeException e) {
+            if (identityIndex != input.directoryKeys().size()) {
+                throw new IOException("Secure input directory identity is incomplete.");
+            }
+
+            Path fileName = absolute.getFileName();
+            requireFileIdentity(readAttributes(current, fileName), input);
+            Set<OpenOption> options = Set.of(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
+            try (SeekableByteChannel channel = current.newByteChannel(fileName, options);
+                 InputStream inputStream = Channels.newInputStream(channel)) {
+                if (channel.size() != input.size()) {
+                    throw new IOException("Input changed after validation.");
+                }
+                byte[] contents = inputStream.readNBytes((int) MAX_INPUT_BYTES + 1);
+                if (contents.length > MAX_INPUT_BYTES) {
+                    throw new IllegalArgumentException("Input grew beyond the 20 MiB limit.");
+                }
+                if (channel.size() != input.size()) {
+                    throw new IOException("Input changed while it was being staged.");
+                }
+                requireFileIdentity(readAttributes(current, fileName), input);
+                if (input.contentSha256() != null
+                        && !input.contentSha256().equals(sha256(contents))) {
+                    throw new IOException("Input content changed after validation.");
+                }
+                return contents;
+            }
+        } finally {
             current.close();
-            throw e;
+        }
+    }
+
+    private static BasicFileAttributes readAttributes(
+            SecureDirectoryStream<Path> directory, Path path) throws IOException {
+        BasicFileAttributeView view = directory.getFileAttributeView(
+                path, BasicFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
+        if (view == null) {
+            throw new IOException("Secure input attributes are unavailable.");
+        }
+        return view.readAttributes();
+    }
+
+    private static Object requireDirectoryKey(BasicFileAttributes attributes) throws IOException {
+        if (!attributes.isDirectory()) {
+            throw new IOException("Input ancestor is not a directory.");
+        }
+        return requireFileKey(attributes, "input directory");
+    }
+
+    private static Object requireFileKey(BasicFileAttributes attributes, String kind)
+            throws IOException {
+        Object fileKey = attributes.fileKey();
+        if (fileKey == null) {
+            throw new IOException("Secure identity is unavailable for " + kind + ".");
+        }
+        return fileKey;
+    }
+
+    private static void requireDirectoryIdentity(
+            BasicFileAttributes attributes, Object expectedKey) throws IOException {
+        if (!attributes.isDirectory()
+                || !Objects.equals(requireFileKey(attributes, "input directory"), expectedKey)) {
+            throw new IOException("Input ancestor changed after validation.");
+        }
+    }
+
+    private static void requireFileIdentity(
+            BasicFileAttributes attributes, SecureInput input) throws IOException {
+        if (!attributes.isRegularFile()
+                || !Objects.equals(requireFileKey(attributes, "input file"), input.fileKey())
+                || attributes.size() != input.size()
+                || !attributes.lastModifiedTime().equals(input.lastModifiedTime())) {
+            throw new IOException("Input changed after validation.");
+        }
+    }
+
+    private static String sha256(byte[] contents) {
+        try {
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(contents));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is unavailable.", e);
         }
     }
 
@@ -429,6 +548,9 @@ public class ImageProcessingTool implements UltimateTool {
         Execution run(List<String> command, Path runtime, Duration timeout)
                 throws IOException, InterruptedException;
     }
+
+    record SecureInput(Path path, List<Object> directoryKeys, Object fileKey,
+                       long size, FileTime lastModifiedTime, String contentSha256) { }
 
     record Execution(int exitCode, boolean timedOut) { }
 }

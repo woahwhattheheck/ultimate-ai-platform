@@ -72,8 +72,18 @@ returned, and no server path is exposed.
 
 The configured managed root and caller source workspace are canonicalized with
 `Path.toRealPath()`. Absolute inputs, traversal, paths resolving outside the
-source workspace, duplicate canonical inputs, symlinked managed roots, and
-inputs replaced between validation and staging are rejected.
+source workspace, duplicate file identities, symlinked managed roots, and
+inputs replaced or modified between validation and staging are rejected.
+
+Validation snapshots a non-null filesystem identity for every directory from
+the filesystem root through the input parent, plus the final regular file's
+identity, size, modification time, and SHA-256 content digest. Staging walks the
+same path with retained `SecureDirectoryStream` descriptors, verifies both the
+named component and the opened child descriptor at every level, then verifies
+the final name before and after the bounded read. Filesystems that cannot expose
+these identities fail closed. Exact content is rehashed before staging, so an
+ordinary-directory generation swap and a same-inode, same-size rewrite cannot
+substitute bytes that were not validated.
 
 Every request receives a generated `.ultimate-image-*` runtime directory under
 the managed root. Only generated staging and output names are used inside it.
@@ -95,6 +105,7 @@ security policy and keep native libraries patched.
 
 Tests cover bounded Base64 return values, command construction, content and path
 validation, output-format verification, per-image and aggregate response limits,
-batch atomicity, symlink replacement, timeout, interruption, process pipe
-draining, root confinement, and cleanup after success and failure. A native smoke
-test runs when ImageMagick 7 is installed and otherwise skips explicitly.
+batch atomicity, symlink and ordinary-directory ancestor replacement,
+same-inode same-size mutation, timeout, interruption, process pipe draining,
+root confinement, and cleanup after success and failure. A native smoke test
+runs when ImageMagick 7 is installed and otherwise skips explicitly.

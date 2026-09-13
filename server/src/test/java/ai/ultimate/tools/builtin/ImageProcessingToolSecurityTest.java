@@ -32,7 +32,9 @@ class ImageProcessingToolSecurityTest {
                     "Filesystem does not expose SecureDirectoryStream");
         }
 
-        assertArrayEquals(inside, ImageProcessingTool.readInputSecure(canonicalInput));
+        ImageProcessingTool.SecureInput snapshot =
+                ImageProcessingTool.snapshotInput(canonicalInput);
+        assertArrayEquals(inside, ImageProcessingTool.readInputSecure(snapshot));
 
         Path outside = Files.createDirectories(temporary.resolve("outside"));
         Files.writeString(outside.resolve("input.png"), "OUTSIDE", StandardCharsets.UTF_8);
@@ -45,6 +47,51 @@ class ImageProcessingToolSecurityTest {
         }
 
         assertThrows(IOException.class,
-                () -> ImageProcessingTool.readInputSecure(canonicalInput));
+                () -> ImageProcessingTool.readInputSecure(snapshot));
     }
+
+    @Test
+    void secureInputReadRejectsOrdinaryAncestorDirectoryReplacement() throws Exception {
+        Path inputParent = Files.createDirectories(
+                temporary.resolve("ordinary/workspace/subdir"));
+        Path input = inputParent.resolve("input.png");
+        Files.writeString(input, "ORIGINAL", StandardCharsets.UTF_8);
+
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(inputParent)) {
+            assumeTrue(stream instanceof SecureDirectoryStream<?>,
+                    "Filesystem does not expose SecureDirectoryStream");
+        }
+
+        ImageProcessingTool.SecureInput snapshot =
+                ImageProcessingTool.snapshotInput(input.toRealPath());
+        Files.move(inputParent, inputParent.resolveSibling("subdir-original"));
+        Path replacement = Files.createDirectory(inputParent);
+        Files.writeString(replacement.resolve("input.png"),
+                "REPLACEMENT", StandardCharsets.UTF_8);
+
+        assertThrows(IOException.class,
+                () -> ImageProcessingTool.readInputSecure(snapshot));
+    }
+    @Test
+    void secureInputReadRejectsSameInodeSameSizeMutationWithRestoredMtime()
+            throws Exception {
+        Path inputParent = Files.createDirectories(
+                temporary.resolve("same-inode/workspace"));
+        Path input = inputParent.resolve("input.png");
+        Files.writeString(input, "ORIGINAL", StandardCharsets.UTF_8);
+
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(inputParent)) {
+            assumeTrue(stream instanceof SecureDirectoryStream<?>,
+                    "Filesystem does not expose SecureDirectoryStream");
+        }
+
+        ImageProcessingTool.SecureInput snapshot =
+                ImageProcessingTool.snapshotInput(input.toRealPath());
+        Files.writeString(input, "MUTATION", StandardCharsets.UTF_8);
+        Files.setLastModifiedTime(input, snapshot.lastModifiedTime());
+
+        assertThrows(IOException.class,
+                () -> ImageProcessingTool.readInputSecure(snapshot));
+    }
+
 }
