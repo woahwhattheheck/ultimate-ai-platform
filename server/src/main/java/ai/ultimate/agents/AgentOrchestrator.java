@@ -74,21 +74,109 @@ public class AgentOrchestrator {
         long startTime =
                 System.currentTimeMillis();
 
-        // Create + persist Agent entity
         Agent newAgent = Agent.create(
                 userId, sessionId, goal);
 
         return r2dbcEntityTemplate
                 .insert(newAgent)
-                // Transition to RUNNING
-                .flatMap(agent ->
-                        r2dbcEntityTemplate
-                                .update(agent.withRunning()))
-                .doOnSuccess(agent ->
+                .flatMapMany(agent ->
+                        runPersistedAgent(
+                                agent,
+                                userId,
+                                startTime));
+    }
+
+    /**
+     * Persist an agent and launch its execution without
+     * tying the caller to the event stream.
+     *
+     * The returned Agent is the exact PENDING entity inserted
+     * into the database. Callers can safely return its ID and
+     * poll it while the independently subscribed execution
+     * transitions that same entity to RUNNING and terminal state.
+     *
+     * @param goal      user's task description
+     * @param userId    authenticated user
+     * @param sessionId optional chat session link
+     * @return Mono containing the persisted Agent identity
+     */
+    public Mono<Agent> startAgentAsync(
+            String goal,
+            UUID userId,
+            UUID sessionId) {
+
+        long startTime =
+                System.currentTimeMillis();
+
+        Agent newAgent = Agent.create(
+                userId, sessionId, goal);
+
+        return r2dbcEntityTemplate
+                .insert(newAgent)
+                .doOnNext(agent ->
+                        runPersistedAgent(
+                                agent,
+                                userId,
+                                startTime)
+                                .subscribe(
+                                        event -> {
+                                            // Execution side effects are
+                                            // tracked inside the stream.
+                                        },
+                                        error -> log.error(
+                                                "Async agent error: "
+                                                        + "id={} error={}",
+                                                agent.id(),
+                                                error.getMessage(),
+                                                error)));
+    }
+
+    /**
+     * Transition a previously persisted PENDING agent to RUNNING
+     * and execute it while maintaining terminal lifecycle state.
+     */
+    private Flux<AgentEvent> runPersistedAgent(
+            Agent pendingAgent,
+            UUID userId,
+            long startTime) {
+
+        return agentRepository
+                .updateStatus(
+                        pendingAgent.id(),
+                        AgentStatus.PENDING.name(),
+                        AgentStatus.RUNNING.name(),
+                        pendingAgent.stepCount(),
+                        null,
+                        null,
+                        null)
+                .switchIfEmpty(Mono.error(
+                        new IllegalStateException(
+                                "Agent RUNNING transition "
+                                        + "returned no row count: "
+                                        + pendingAgent.id())))
+                .flatMap(rows -> {
+                    if (rows == 0) {
                         log.info(
-                                "Agent started: id={} "
-                                        + "user={}",
-                                agent.id(), userId))
+                                "Agent launch skipped: id={} "
+                                        + "status changed before RUNNING",
+                                pendingAgent.id());
+                        return Mono.<Agent>empty();
+                    }
+                    if (rows != 1) {
+                        return Mono.error(
+                                new IllegalStateException(
+                                        "Agent RUNNING transition "
+                                                + "updated unexpected rows="
+                                                + rows
+                                                + " id="
+                                                + pendingAgent.id()));
+                    }
+                    Agent runningAgent = pendingAgent.withRunning();
+                    log.info(
+                            "Agent started: id={} user={}",
+                            runningAgent.id(), userId);
+                    return Mono.just(runningAgent);
+                })
                 .flatMapMany(agent ->
 
                         // Execute the ReACT loop
@@ -104,6 +192,10 @@ public class AgentOrchestrator {
                                         long duration =
                                                 System.currentTimeMillis()
                                                         - startTime;
+                                        int durationMs =
+                                                (int) Math.min(
+                                                        duration,
+                                                        Integer.MAX_VALUE);
 
                                         // Async DB update
                                         // count steps then complete
@@ -118,7 +210,8 @@ public class AgentOrchestrator {
                                                                         AgentStatus.COMPLETED.name(),
                                                                         count.intValue(),
                                                                         event.data(),
-                                                                        null))
+                                                                        null,
+                                                                        durationMs))
                                                 .doOnSuccess(rows -> {
                                                     if (rows > 0) {
                                                         log.info(
@@ -159,7 +252,8 @@ public class AgentOrchestrator {
                                                         AgentStatus.FAILED.name(),
                                                         agent.stepCount(),
                                                         null,
-                                                        event.data())
+                                                        event.data(),
+                                                        null)
                                                 .doOnError(e ->
                                                         log.error(
                                                                 "Failed to mark agent "
@@ -184,7 +278,8 @@ public class AgentOrchestrator {
                                                     AgentStatus.FAILED.name(),
                                                     agent.stepCount(),
                                                     null,
-                                                    error.getMessage())
+                                                    error.getMessage(),
+                                                    null)
                                             .subscribe();
                                 })
                 );
@@ -277,6 +372,7 @@ public class AgentOrchestrator {
                                     agent.status().name(),
                                     AgentStatus.CANCELLED.name(),
                                     agent.stepCount(),
+                                    null,
                                     null,
                                     null)
                             .then();

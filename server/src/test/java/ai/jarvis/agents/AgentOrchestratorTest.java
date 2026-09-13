@@ -18,7 +18,10 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.intThat;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -85,7 +88,7 @@ class AgentOrchestratorTest {
 
         when(agentRepository.updateStatus(
                 any(), anyString(), anyString(),
-                anyInt(), anyString(), isNull()))
+                anyInt(), anyString(), isNull(), anyInt()))
                 .thenReturn(Mono.just(1));
 
         StepVerifier
@@ -97,6 +100,15 @@ class AgentOrchestratorTest {
                                 && event.data()
                                 .equals("Done!"))
                 .verifyComplete();
+
+        verify(agentRepository).updateStatus(
+                eq(runningAgent.id()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(AgentStatus.COMPLETED.name()),
+                eq(1),
+                eq("Done!"),
+                isNull(),
+                intThat(duration -> duration >= 0));
     }
 
     @Test
@@ -122,7 +134,7 @@ class AgentOrchestratorTest {
 
         when(agentRepository.updateStatus(
                 any(), anyString(), anyString(),
-                anyInt(), isNull(), anyString()))
+                anyInt(), isNull(), anyString(), isNull()))
                 .thenReturn(Mono.just(1));
 
         StepVerifier
@@ -132,6 +144,15 @@ class AgentOrchestratorTest {
                         event.type() ==
                                 AgentEvent.EventType.ERROR)
                 .verifyComplete();
+
+        verify(agentRepository).updateStatus(
+                eq(runningAgent.id()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(AgentStatus.FAILED.name()),
+                eq(runningAgent.stepCount()),
+                isNull(),
+                eq("AI failed"),
+                isNull());
     }
 
     // ── getUserAgents() tests ─────────────────────
@@ -226,13 +247,22 @@ class AgentOrchestratorTest {
 
         when(agentRepository.updateStatus(
                 any(), anyString(), anyString(),
-                anyInt(), isNull(), isNull()))
+                anyInt(), isNull(), isNull(), isNull()))
                 .thenReturn(Mono.just(1));
 
         StepVerifier
                 .create(orchestrator.cancelAgent(
                         running.id(), userId))
                 .verifyComplete();
+
+        verify(agentRepository).updateStatus(
+                eq(running.id()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(AgentStatus.CANCELLED.name()),
+                eq(running.stepCount()),
+                isNull(),
+                isNull(),
+                isNull());
     }
 
     @Test
