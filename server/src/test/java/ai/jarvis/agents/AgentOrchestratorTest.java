@@ -69,10 +69,14 @@ class AgentOrchestratorTest {
                 .insert(any(Agent.class)))
                 .thenReturn(Mono.just(pendingAgent));
 
-        // DB update to RUNNING → returns runningAgent
-        when(r2dbcEntityTemplate
-                .update(any(Agent.class)))
-                .thenReturn(Mono.just(runningAgent));
+        // PENDING → RUNNING is a compare-and-set lifecycle transition.
+        when(agentRepository.updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull()))
+                .thenReturn(Mono.just(1));
 
         // Executor returns immediate FINAL event
         when(executor.execute(
@@ -102,6 +106,13 @@ class AgentOrchestratorTest {
                 .verifyComplete();
 
         verify(agentRepository).updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull());
+
+        verify(agentRepository).updateStatus(
                 eq(runningAgent.id()),
                 eq(AgentStatus.RUNNING.name()),
                 eq(AgentStatus.COMPLETED.name()),
@@ -122,9 +133,14 @@ class AgentOrchestratorTest {
         when(r2dbcEntityTemplate
                 .insert(any(Agent.class)))
                 .thenReturn(Mono.just(pendingAgent));
-        when(r2dbcEntityTemplate
-                .update(any(Agent.class)))
-                .thenReturn(Mono.just(runningAgent));
+
+        when(agentRepository.updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull()))
+                .thenReturn(Mono.just(1));
 
         // Executor returns ERROR event
         when(executor.execute(
@@ -144,6 +160,13 @@ class AgentOrchestratorTest {
                         event.type() ==
                                 AgentEvent.EventType.ERROR)
                 .verifyComplete();
+
+        verify(agentRepository).updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull());
 
         verify(agentRepository).updateStatus(
                 eq(runningAgent.id()),
