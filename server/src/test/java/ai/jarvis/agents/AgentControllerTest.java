@@ -13,7 +13,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
-import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -50,14 +49,30 @@ class AgentControllerTest {
     class AuthenticatedTests {
 
         @Test
-        @DisplayName("Test POST /api/v1/agents - Should return 202 Accepted")
-        void testCreateAgent_ShouldReturnAccepted() {
-            AgentRequest request = new AgentRequest("Test Goal", UUID.randomUUID());
-            AgentResponse mockResponse = new AgentResponse(UUID.randomUUID(), "Test Goal", AgentStatus.PENDING, null, 0, null, null, Instant.now(), Instant.now(), null, List.of());
+        @DisplayName("Test POST /api/v1/agents - Should return persisted agent ID")
+        void testCreateAgent_ShouldReturnPersistedAgentId() {
+            UUID sessionId = UUID.randomUUID();
+            AgentRequest request = new AgentRequest("Test Goal", sessionId);
+            Agent persistedAgent = Agent.create(USER_ID, sessionId, "Test Goal");
+            AgentResponse mockResponse = new AgentResponse(
+                    persistedAgent.id(),
+                    "Test Goal",
+                    AgentStatus.PENDING,
+                    null,
+                    0,
+                    null,
+                    null,
+                    Instant.now(),
+                    Instant.now(),
+                    null,
+                    List.of());
 
-            when(orchestrator.startAgent(any(String.class), any(UUID.class), any(UUID.class)))
-                    .thenReturn(Flux.empty());
-            when(agentMapper.toResponse(any(Agent.class)))
+            when(orchestrator.startAgentAsync(
+                    any(String.class),
+                    any(UUID.class),
+                    any(UUID.class)))
+                    .thenReturn(Mono.just(persistedAgent));
+            when(agentMapper.toResponse(persistedAgent))
                     .thenReturn(mockResponse);
 
             webTestClient.post()
@@ -67,7 +82,9 @@ class AgentControllerTest {
                     .exchange()
                     .expectStatus().isAccepted()
                     .expectBody()
-                    .jsonPath("$.success").isEqualTo(true);
+                    .jsonPath("$.success").isEqualTo(true)
+                    .jsonPath("$.data.id")
+                    .isEqualTo(persistedAgent.id().toString());
         }
 
         @Test
