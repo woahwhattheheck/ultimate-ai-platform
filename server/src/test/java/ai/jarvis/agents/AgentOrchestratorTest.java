@@ -69,11 +69,6 @@ class AgentOrchestratorTest {
                 .insert(any(Agent.class)))
                 .thenReturn(Mono.just(pendingAgent));
 
-        // DB update to RUNNING → returns runningAgent
-        when(r2dbcEntityTemplate
-                .update(any(Agent.class)))
-                .thenReturn(Mono.just(runningAgent));
-
         // Executor returns immediate FINAL event
         when(executor.execute(
                 any(Agent.class), any(UUID.class)))
@@ -124,9 +119,6 @@ class AgentOrchestratorTest {
         when(r2dbcEntityTemplate
                 .insert(any(Agent.class)))
                 .thenReturn(Mono.just(pendingAgent));
-        when(r2dbcEntityTemplate
-                .update(any(Agent.class)))
-                .thenReturn(Mono.just(runningAgent));
 
         // Executor returns ERROR event
         when(executor.execute(
