@@ -14,6 +14,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,12 +39,17 @@ class AgentOrchestratorAsyncStartTest {
         UUID userId = UUID.randomUUID();
         UUID sessionId = UUID.randomUUID();
         Agent persisted = Agent.create(userId, sessionId, "Test goal");
-        Agent running = persisted.withRunning();
 
         when(r2dbcEntityTemplate.insert(any(Agent.class)))
                 .thenReturn(Mono.just(persisted));
-        when(r2dbcEntityTemplate.update(any(Agent.class)))
-                .thenReturn(Mono.just(running));
+        when(agentRepository.updateStatus(
+                eq(persisted.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(persisted.stepCount()),
+                isNull(),
+                isNull()))
+                .thenReturn(Mono.just(1));
         when(executor.execute(any(Agent.class), eq(userId)))
                 .thenReturn(Flux.empty());
 
@@ -60,10 +67,58 @@ class AgentOrchestratorAsyncStartTest {
                 })
                 .verifyComplete();
 
+        verify(agentRepository).updateStatus(
+                persisted.id(),
+                AgentStatus.PENDING.name(),
+                AgentStatus.RUNNING.name(),
+                persisted.stepCount(),
+                null,
+                null);
         verify(executor).execute(
                 org.mockito.ArgumentMatchers.argThat(
                         agent -> agent.id().equals(persisted.id())
                                 && agent.status() == AgentStatus.RUNNING),
                 eq(userId));
+    }
+
+    @Test
+    void asyncStartDoesNotExecuteWhenPendingToRunningCasLoses() {
+        UUID userId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        Agent persisted = Agent.create(userId, sessionId, "Cancelled goal");
+
+        when(r2dbcEntityTemplate.insert(any(Agent.class)))
+                .thenReturn(Mono.just(persisted));
+        when(agentRepository.updateStatus(
+                eq(persisted.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(persisted.stepCount()),
+                isNull(),
+                isNull()))
+                .thenReturn(Mono.just(0));
+
+        AgentOrchestrator orchestrator = new AgentOrchestrator(
+                executor,
+                agentRepository,
+                stepRepository,
+                r2dbcEntityTemplate);
+
+        StepVerifier.create(orchestrator.startAgentAsync(
+                        "Cancelled goal", userId, sessionId))
+                .assertNext(agent -> {
+                    assertEquals(persisted.id(), agent.id());
+                    assertEquals(AgentStatus.PENDING, agent.status());
+                })
+                .verifyComplete();
+
+        verify(agentRepository).updateStatus(
+                persisted.id(),
+                AgentStatus.PENDING.name(),
+                AgentStatus.RUNNING.name(),
+                persisted.stepCount(),
+                null,
+                null);
+        verify(executor, never()).execute(any(Agent.class), eq(userId));
     }
 }
