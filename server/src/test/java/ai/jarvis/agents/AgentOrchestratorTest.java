@@ -10,17 +10,19 @@ import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 import reactor.test.StepVerifier;
 
-import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.intThat;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,7 +59,7 @@ class AgentOrchestratorTest {
     // ── startAgent() tests ────────────────────────
 
     @Test
-    @DisplayName("startAgent() creates PENDING then RUNNING agent")
+    @DisplayName("startAgent() atomically claims PENDING then runs agent")
     void shouldCreateAndRunAgent() {
         Agent pendingAgent = Agent.create(
                 userId, null, "Test goal");
@@ -69,10 +71,14 @@ class AgentOrchestratorTest {
                 .insert(any(Agent.class)))
                 .thenReturn(Mono.just(pendingAgent));
 
-        // DB update to RUNNING → returns runningAgent
-        when(r2dbcEntityTemplate
-                .update(any(Agent.class)))
-                .thenReturn(Mono.just(runningAgent));
+        // Atomic PENDING → RUNNING claim
+        when(agentRepository.updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull()))
+                .thenReturn(Mono.just(1));
 
         // Executor returns immediate FINAL event
         when(executor.execute(
@@ -102,6 +108,13 @@ class AgentOrchestratorTest {
                 .verifyComplete();
 
         verify(agentRepository).updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull());
+
+        verify(agentRepository).updateStatus(
                 eq(runningAgent.id()),
                 eq(AgentStatus.RUNNING.name()),
                 eq(AgentStatus.COMPLETED.name()),
@@ -122,9 +135,13 @@ class AgentOrchestratorTest {
         when(r2dbcEntityTemplate
                 .insert(any(Agent.class)))
                 .thenReturn(Mono.just(pendingAgent));
-        when(r2dbcEntityTemplate
-                .update(any(Agent.class)))
-                .thenReturn(Mono.just(runningAgent));
+        when(agentRepository.updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull()))
+                .thenReturn(Mono.just(1));
 
         // Executor returns ERROR event
         when(executor.execute(
@@ -153,6 +170,59 @@ class AgentOrchestratorTest {
                 isNull(),
                 eq("AI failed"),
                 isNull());
+    }
+
+    @Test
+    @DisplayName("cancelled PENDING async agent cannot be resurrected")
+    void shouldNotExecuteWhenCancellationWinsStartupRace() {
+        Agent pendingAgent = Agent.create(
+                userId, null, "Test goal");
+        Sinks.One<Integer> startupClaim = Sinks.one();
+
+        when(r2dbcEntityTemplate
+                .insert(any(Agent.class)))
+                .thenReturn(Mono.just(pendingAgent));
+        when(agentRepository.updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull()))
+                .thenReturn(startupClaim.asMono());
+        when(agentRepository.findByIdAndUserId(
+                pendingAgent.id(), userId))
+                .thenReturn(Mono.just(pendingAgent));
+        when(agentRepository.updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.CANCELLED.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull()))
+                .thenReturn(Mono.just(1));
+
+        Agent persisted = orchestrator
+                .startAgentAsync(
+                        "Test goal", userId, null)
+                .block();
+        assertEquals(pendingAgent.id(), persisted.id());
+
+        StepVerifier
+                .create(orchestrator.cancelAgent(
+                        pendingAgent.id(), userId))
+                .verifyComplete();
+
+        // The delayed start claim loses because cancellation already
+        // changed the persisted status away from PENDING.
+        startupClaim.tryEmitValue(0);
+
+        verify(agentRepository).updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.CANCELLED.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull());
+        verify(executor, never()).execute(
+                any(Agent.class), any(UUID.class));
     }
 
     // ── getUserAgents() tests ─────────────────────
