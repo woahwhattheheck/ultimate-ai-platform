@@ -102,7 +102,7 @@ class AgentOrchestratorRunningExecutionCancellationTest {
         Agent persisted = Agent.create(userId, null, "racing work");
         Agent running = persisted.withRunning();
         AtomicBoolean cancelled = new AtomicBoolean();
-        Sinks.Empty<Void> release = Sinks.empty();
+        Sinks.One<Boolean> release = Sinks.one();
 
         when(r2dbcEntityTemplate.insert(any(Agent.class)))
                 .thenReturn(Mono.just(persisted));
@@ -149,7 +149,7 @@ class AgentOrchestratorRunningExecutionCancellationTest {
                 .verify();
 
         assertFalse(cancelled.get());
-        release.tryEmitEmpty();
+        release.tryEmitValue(Boolean.TRUE);
         assertTrue(cancelled.get());
     }
 
