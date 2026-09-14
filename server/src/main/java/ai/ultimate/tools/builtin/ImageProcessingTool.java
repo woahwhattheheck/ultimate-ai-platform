@@ -7,12 +7,18 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.channels.Channels;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.SecureDirectoryStream;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -103,18 +109,10 @@ public class ImageProcessingTool implements UltimateTool {
 
             for (int i = 0; i < inputs.size(); i++) {
                 Path original = inputs.get(i);
-                if (!original.equals(original.toRealPath())) {
-                    throw new IllegalArgumentException("Input path changed during processing.");
-                }
+                byte[] contents = readInputSecure(original);
 
                 Path stagedInput = runtime.resolve("input-" + i);
-                try (InputStream input = Files.newInputStream(original, LinkOption.NOFOLLOW_LINKS)) {
-                    byte[] contents = input.readNBytes((int) MAX_INPUT_BYTES + 1);
-                    if (contents.length > MAX_INPUT_BYTES) {
-                        throw new IllegalArgumentException("Input grew beyond the 20 MiB limit.");
-                    }
-                    Files.write(stagedInput, contents);
-                }
+                Files.write(stagedInput, contents);
 
                 String coder = detectFormat(stagedInput);
                 Path stagedOutput = Files.createFile(
@@ -232,6 +230,60 @@ public class ImageProcessingTool implements UltimateTool {
             throw new IllegalArgumentException("Input path resolves outside the source workspace.");
         }
         return real;
+    }
+
+    static byte[] readInputSecure(Path input) throws IOException {
+        Path absolute = input.toAbsolutePath().normalize();
+        Path parent = absolute.getParent();
+        if (parent == null || absolute.getFileName() == null) {
+            throw new IOException("Input path has no secure parent directory.");
+        }
+
+        try (SecureDirectoryStream<Path> directory = openSecureDirectory(parent)) {
+            Set<OpenOption> options = Set.of(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
+            try (SeekableByteChannel channel =
+                         directory.newByteChannel(absolute.getFileName(), options);
+                 InputStream stream = Channels.newInputStream(channel)) {
+                if (channel.size() > MAX_INPUT_BYTES) {
+                    throw new IllegalArgumentException("Input grew beyond the 20 MiB limit.");
+                }
+                byte[] contents = stream.readNBytes((int) MAX_INPUT_BYTES + 1);
+                if (contents.length > MAX_INPUT_BYTES) {
+                    throw new IllegalArgumentException("Input grew beyond the 20 MiB limit.");
+                }
+                return contents;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static SecureDirectoryStream<Path> openSecureDirectory(Path directory) throws IOException {
+        Path absolute = directory.toAbsolutePath().normalize();
+        Path filesystemRoot = absolute.getRoot();
+        if (filesystemRoot == null) {
+            throw new IOException("Secure directory traversal requires an absolute path.");
+        }
+
+        DirectoryStream<Path> stream = Files.newDirectoryStream(filesystemRoot);
+        if (!(stream instanceof SecureDirectoryStream<?>)) {
+            stream.close();
+            throw new IOException(
+                    "Secure directory traversal is unavailable on this filesystem.");
+        }
+
+        SecureDirectoryStream<Path> current = (SecureDirectoryStream<Path>) stream;
+        try {
+            for (Path component : absolute) {
+                SecureDirectoryStream<Path> next =
+                        current.newDirectoryStream(component, LinkOption.NOFOLLOW_LINKS);
+                current.close();
+                current = next;
+            }
+            return current;
+        } catch (IOException | RuntimeException e) {
+            current.close();
+            throw e;
+        }
     }
 
     private static String detectFormat(Path input) throws IOException {
