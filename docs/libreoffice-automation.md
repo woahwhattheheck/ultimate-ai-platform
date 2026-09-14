@@ -59,9 +59,12 @@ names are used; there is no caller-supplied path, command, executable or filter.
 The root must be server-owned and may not traverse symbolic links. Each request
 gets a private temporary directory, with restrictive POSIX permissions when
 available. Each conversion gets a separate profile (macro security level 3),
-output directory and temporary environment. Arguments go directly to
-`ProcessBuilder`, without a shell. Do not share this directory with writers
-outside the server process.
+output directory and temporary environment. The LibreOffice child inherits only
+host process-launch essentials (path, locale, timezone and Windows launch
+variables); unrelated server credentials, proxy settings and service configuration
+are removed. Private `HOME`, `TMPDIR`, `TMP` and `TEMP` values then override the
+remaining environment. Arguments go directly to `ProcessBuilder`, without a shell.
+Do not share this directory with writers outside the server process.
 
 Stdout and stderr use independent daemon drainers, continuing to consume after
 bounded diagnostic capture fills. Each process has a 60-second timeout. Cleanup
