@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,6 +33,28 @@ class LibreOfficeAutomationToolTest {
         assertThat(invoke(tool, "hello")).contains("Budget denied");
         assertThat(started).isFalse();
         assertThat(Files.exists(root())).isFalse();
+    }
+
+    @Test
+    void stripsUnrelatedServerSecretsFromLibreOfficeEnvironment() {
+        Map<String, String> environment = new HashMap<>(Map.of(
+                "Path", "/trusted/bin",
+                "LANG", "C.UTF-8",
+                "DATABASE_URL", "postgres://private",
+                "AWS_SECRET_ACCESS_KEY", "private-key",
+                "HTTP_PROXY", "http://credential@proxy"));
+        Map<String, String> required = Map.of(
+                "HOME", "/managed/job",
+                "TMPDIR", "/managed/job/tmp",
+                "TMP", "/managed/job/tmp",
+                "TEMP", "/managed/job/tmp");
+
+        LibreOfficeAutomationTool.restrictProcessEnvironment(environment, required);
+
+        assertThat(environment).containsAllEntriesOf(required)
+                .containsEntry("Path", "/trusted/bin")
+                .containsEntry("LANG", "C.UTF-8")
+                .doesNotContainKeys("DATABASE_URL", "AWS_SECRET_ACCESS_KEY", "HTTP_PROXY");
     }
 
     @Test
