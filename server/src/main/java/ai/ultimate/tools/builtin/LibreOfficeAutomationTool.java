@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -41,6 +42,8 @@ public class LibreOfficeAutomationTool implements UltimateTool {
     static final Duration PROCESS_TIMEOUT = Duration.ofSeconds(60);
     private static final int MAX_DIAGNOSTIC_BYTES = 16_384;
     private static final Set<String> INPUT_FORMATS = Set.of("txt", "csv", "docx", "xlsx", "pdf");
+    private static final Set<String> SAFE_INHERITED_ENVIRONMENT = Set.of(
+            "COMSPEC", "LANG", "LC_ALL", "PATH", "PATHEXT", "SYSTEMROOT", "TZ", "WINDIR");
 
     private final Path managedRoot;
     private final String executable;
@@ -362,8 +365,21 @@ public class LibreOfficeAutomationTool implements UltimateTool {
     private static Process startProcess(List<String> command, Path directory,
             Map<String, String> environment) throws IOException {
         ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile());
-        builder.environment().putAll(environment);
+        restrictProcessEnvironment(builder.environment(), environment);
         return builder.start();
+    }
+
+    static void restrictProcessEnvironment(Map<String, String> processEnvironment,
+            Map<String, String> requiredEnvironment) {
+        Map<String, String> inherited = Map.copyOf(processEnvironment);
+        processEnvironment.clear();
+        inherited.forEach((name, value) -> {
+            if (SAFE_INHERITED_ENVIRONMENT.contains(name.toUpperCase(Locale.ROOT))) {
+                processEnvironment.put(name, value);
+            }
+        });
+        // Private workspace values always win, including HOME and every temp-directory alias.
+        processEnvironment.putAll(requiredEnvironment);
     }
 
     private static void cleanup(Path runtime) throws IOException {
