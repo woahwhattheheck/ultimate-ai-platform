@@ -1,6 +1,11 @@
 name: ImageMagick exact-head validation
 
 on:
+  push:
+    branches:
+      - zism8q4/image-exact-validation-49c5d6
+    paths:
+      - '.github/workflows/image-exact-validation.yml'
   pull_request:
     branches:
       - main
@@ -53,7 +58,7 @@ jobs:
         shell: bash
         run: |
           test "$(git rev-parse HEAD)" = "$IMAGE_BOUNTY_SHA"
-          git status --porcelain=v1
+          test -z "$(git status --porcelain=v1)"
 
       - name: Set up Java 21
         uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520
