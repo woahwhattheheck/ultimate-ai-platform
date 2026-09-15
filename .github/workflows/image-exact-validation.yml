@@ -137,7 +137,7 @@ jobs:
         working-directory: server
         run: |
           chmod +x mvnw
-          ./mvnw '-Dtest=ai.ultimate.tools.builtin.ImageProcessingToolTest#imageMagickSmokeTestVerifiesOutputDimensionsAndFormat' test
+          ./mvnw '-Dtest=ai.ultimate.tools.builtin.ImageProcessingToolTest#nativeImageMagickSmokeReturnsArtifactAndLeavesNoGeneratedFile' test
 
       - name: Require one executed test and zero skips
         run: |
