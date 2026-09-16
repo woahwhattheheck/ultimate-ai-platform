@@ -7,10 +7,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class AiRequestLogger {
 
+    private final RequestStats requestStats = new RequestStats();
+
     public void logRequestStart(
             String username,
             String sessionId,
             int historySize) {
+        requestStats.requestStarted();
         log.info(
                 "AI_REQUEST_START user={} session={} history={}",
                 username, sessionId, historySize
@@ -22,6 +25,7 @@ public class AiRequestLogger {
             String sessionId,
             int tokens,
             long durationMs) {
+        requestStats.requestCompleted(tokens, durationMs);
         double tokensPerSecond = durationMs > 0
                 ? (tokens * 1000.0 / durationMs)
                 : 0;
@@ -37,9 +41,14 @@ public class AiRequestLogger {
             String username,
             String sessionId,
             String error) {
+        requestStats.requestFailed();
         log.error(
                 "AI_REQUEST_ERROR user={} session={} error={}",
                 username, sessionId, error
         );
+    }
+
+    public RequestStats.Snapshot stats() {
+        return requestStats.snapshot();
     }
 }
