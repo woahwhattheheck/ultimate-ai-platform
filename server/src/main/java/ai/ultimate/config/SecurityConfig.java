@@ -31,7 +31,8 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_HEALTH_ENDPOINTS = {
             "/actuator/health",
-            "/actuator/health/**"
+            "/actuator/health/liveness",
+            "/actuator/health/readiness"
     };
 
     private static final String[] ADMIN_ACTUATOR_ENDPOINTS = {
