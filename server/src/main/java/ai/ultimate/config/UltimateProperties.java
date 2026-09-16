@@ -56,7 +56,11 @@ public record UltimateProperties(
             @DefaultValue("5")
             int authAttemptsPerMinute,
             @DefaultValue("10")
-            int adminRequestsPerMinute
+            int adminRequestsPerMinute,
+            @DefaultValue("10000")
+            int maxTrackedKeys,
+            @DefaultValue("false")
+            boolean trustForwardedHeaders
     ) {}
 
     public record Argon2Properties(
