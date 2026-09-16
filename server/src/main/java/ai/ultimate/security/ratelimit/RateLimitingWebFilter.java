@@ -57,7 +57,7 @@ public final class RateLimitingWebFilter implements WebFilter {
 
         RateLimitPolicy policy = RateLimitPolicy.classify(
                 exchange.getRequest().getMethod(),
-                exchange.getRequest().getPath().value());
+                exchange.getRequest().getPath().pathWithinApplication());
         if (policy == null) {
             return chain.filter(exchange);
         }
