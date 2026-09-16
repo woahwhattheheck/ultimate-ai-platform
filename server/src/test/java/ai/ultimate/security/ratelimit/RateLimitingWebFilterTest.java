@@ -84,6 +84,31 @@ class RateLimitingWebFilterTest {
     }
 
     @Test
+    void matrixParametersCannotBypassProtectedRouteQuota() {
+        RateLimitingWebFilter filter = filter(
+                properties(true, 1, 5, 10, false));
+        AtomicInteger chainCalls = new AtomicInteger();
+        WebFilterChain chain = completingChain(chainCalls);
+
+        verifyComplete(withPrincipal(
+                filter.filter(matrixChatExchange(), chain),
+                "matrix-user"));
+        MockServerWebExchange rejected = matrixChatExchange();
+        verifyComplete(withPrincipal(
+                filter.filter(rejected, chain),
+                "matrix-user"));
+
+        assertThat(chainCalls).hasValue(1);
+        assertThat(rejected.getResponse().getStatusCode())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(rejected.getResponse().getHeaders()
+                .getFirst(RateLimitingWebFilter.LIMIT_HEADER))
+                .isEqualTo("1");
+        assertThat(rejected.getResponse().getBodyAsString().block())
+                .contains("\"path\":\"/api/v1/chat;v=1/stream\"");
+    }
+
+    @Test
     void forwardedAddressIsIgnoredUnlessExplicitlyTrusted() {
         AtomicInteger untrustedCalls = new AtomicInteger();
         RateLimitingWebFilter untrusted = filter(
@@ -209,6 +234,16 @@ class RateLimitingWebFilterTest {
         return MockServerWebExchange.from(
                 MockServerHttpRequest
                         .post("/api/v1/chat/stream")
+                        .remoteAddress(new InetSocketAddress(
+                                "203.0.113.30",
+                                443))
+                        .build());
+    }
+
+    private MockServerWebExchange matrixChatExchange() {
+        return MockServerWebExchange.from(
+                MockServerHttpRequest
+                        .post("/api/v1/chat;v=1/stream")
                         .remoteAddress(new InetSocketAddress(
                                 "203.0.113.30",
                                 443))
