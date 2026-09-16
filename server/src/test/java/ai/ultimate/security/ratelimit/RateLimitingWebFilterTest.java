@@ -154,8 +154,8 @@ class RateLimitingWebFilterTest {
         verifyComplete(enabled.filter(health, bypassChain));
         assertThat(bypassCalls).hasValue(1);
         assertThat(health.getResponse().getHeaders()
-                .containsKey(RateLimitingWebFilter.LIMIT_HEADER))
-                .isFalse();
+                .getFirst(RateLimitingWebFilter.LIMIT_HEADER))
+                .isNull();
     }
 
     private RateLimitingWebFilter filter(

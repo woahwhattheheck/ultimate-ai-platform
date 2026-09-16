@@ -61,7 +61,25 @@ public record UltimateProperties(
             int maxTrackedKeys,
             @DefaultValue("false")
             boolean trustForwardedHeaders
-    ) {}
+    ) {
+        /**
+         * Compatibility constructor for existing in-process callers that use
+         * the original four-field rate-limit configuration.
+         */
+        public RateLimitingProperties(
+                boolean enabled,
+                int chatRequestsPerMinute,
+                int authAttemptsPerMinute,
+                int adminRequestsPerMinute) {
+            this(
+                    enabled,
+                    chatRequestsPerMinute,
+                    authAttemptsPerMinute,
+                    adminRequestsPerMinute,
+                    10000,
+                    false);
+        }
+    }
 
     public record Argon2Properties(
             @DefaultValue("65536")
