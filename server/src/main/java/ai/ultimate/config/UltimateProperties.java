@@ -1,6 +1,7 @@
 package ai.ultimate.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import java.time.Duration;
@@ -56,8 +57,39 @@ public record UltimateProperties(
             @DefaultValue("5")
             int authAttemptsPerMinute,
             @DefaultValue("10")
-            int adminRequestsPerMinute
-    ) {}
+            int adminRequestsPerMinute,
+            @DefaultValue("10000")
+            int maxTrackedKeys,
+            @DefaultValue("false")
+            boolean trustForwardedHeaders
+    ) {
+        /**
+         * Spring must bind through the six-field canonical constructor. The
+         * four-field overload below is retained only for source compatibility
+         * with existing in-process callers.
+         */
+        @ConstructorBinding
+        public RateLimitingProperties {
+        }
+
+        /**
+         * Compatibility constructor for existing in-process callers that use
+         * the original four-field rate-limit configuration.
+         */
+        public RateLimitingProperties(
+                boolean enabled,
+                int chatRequestsPerMinute,
+                int authAttemptsPerMinute,
+                int adminRequestsPerMinute) {
+            this(
+                    enabled,
+                    chatRequestsPerMinute,
+                    authAttemptsPerMinute,
+                    adminRequestsPerMinute,
+                    10000,
+                    false);
+        }
+    }
 
     public record Argon2Properties(
             @DefaultValue("65536")

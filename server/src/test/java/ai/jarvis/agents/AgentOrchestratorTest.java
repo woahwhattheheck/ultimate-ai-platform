@@ -12,7 +12,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -54,7 +53,7 @@ class AgentOrchestratorTest {
         userId = UUID.randomUUID();
     }
 
-    // ── startAgent() tests ────────────────────────
+    // ── startAgent() tests ────────────────
 
     @Test
     @DisplayName("startAgent() creates PENDING then RUNNING agent")
@@ -148,6 +147,10 @@ class AgentOrchestratorTest {
                 .thenReturn(Flux.just(
                         AgentEvent.error("AI failed")));
 
+        when(stepRepository
+                .countByAgentId(any(UUID.class)))
+                .thenReturn(Mono.just(0L));
+
         when(agentRepository.updateStatus(
                 any(), anyString(), anyString(),
                 anyInt(), isNull(), anyString(), isNull()))
@@ -172,13 +175,13 @@ class AgentOrchestratorTest {
                 eq(runningAgent.id()),
                 eq(AgentStatus.RUNNING.name()),
                 eq(AgentStatus.FAILED.name()),
-                eq(runningAgent.stepCount()),
+                eq(0),
                 isNull(),
                 eq("AI failed"),
                 isNull());
     }
 
-    // ── getUserAgents() tests ─────────────────────
+    // ── getUserAgents() tests ───────────────
 
     @Test
     @DisplayName("getUserAgents() returns all user agents")
@@ -202,7 +205,7 @@ class AgentOrchestratorTest {
                 .verifyComplete();
     }
 
-    // ── getAgent() tests ──────────────────────────
+    // ── getAgent() tests ────────────────────
 
     @Test
     @DisplayName("getAgent() returns agent with steps")
@@ -254,7 +257,7 @@ class AgentOrchestratorTest {
                 .verify();
     }
 
-    // ── cancelAgent() tests ───────────────────────
+    // ── cancelAgent() tests ───────────────
 
     @Test
     @DisplayName("cancelAgent() cancels RUNNING agent")
