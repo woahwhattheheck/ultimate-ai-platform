@@ -21,21 +21,28 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthFilter;
-    private final ObjectProvider<FixedWindowRateLimiter> rateLimiter;
-    private final ObjectProvider<UltimateProperties> ultimateProperties;
-
-    // Public endpoints — no JWT required.
-    // Use CLI commands (status, doctor, benchmark-latency)
-    // to verify Ollama connectivity instead.
     private static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/**",
             "/swagger-ui.html",
             "/swagger-ui/**",
             "/v3/api-docs/**",
-            "/webjars/**",
-            "/actuator/health"
+            "/webjars/**"
     };
+
+    private static final String[] PUBLIC_HEALTH_ENDPOINTS = {
+            "/actuator/health",
+            "/actuator/health/liveness",
+            "/actuator/health/readiness"
+    };
+
+    private static final String[] ADMIN_ACTUATOR_ENDPOINTS = {
+            "/actuator",
+            "/actuator/**"
+    };
+
+    private final JwtAuthenticationFilter jwtAuthFilter;
+    private final ObjectProvider<FixedWindowRateLimiter> rateLimiter;
+    private final ObjectProvider<UltimateProperties> ultimateProperties;
 
     @Bean
     public SecurityWebFilterChain securityFilterChain(
@@ -59,6 +66,8 @@ public class SecurityConfig {
 
         return configured
                 .authorizeExchange(exchanges -> exchanges
+                        .pathMatchers(PUBLIC_HEALTH_ENDPOINTS).permitAll()
+                        .pathMatchers(ADMIN_ACTUATOR_ENDPOINTS).hasRole("ADMIN")
                         .pathMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .anyExchange().authenticated()
                 )
