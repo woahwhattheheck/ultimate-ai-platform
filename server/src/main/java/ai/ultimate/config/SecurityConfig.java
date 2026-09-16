@@ -4,6 +4,7 @@ import ai.ultimate.security.jwt.JwtAuthenticationFilter;
 import ai.ultimate.security.ratelimit.FixedWindowRateLimiter;
 import ai.ultimate.security.ratelimit.RateLimitingWebFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
@@ -21,8 +22,8 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
-    private final FixedWindowRateLimiter rateLimiter;
-    private final UltimateProperties ultimateProperties;
+    private final ObjectProvider<FixedWindowRateLimiter> rateLimiter;
+    private final ObjectProvider<UltimateProperties> ultimateProperties;
 
     // Public endpoints — no JWT required.
     // Use CLI commands (status, doctor, benchmark-latency)
@@ -39,22 +40,24 @@ public class SecurityConfig {
     @Bean
     public SecurityWebFilterChain securityFilterChain(
             ServerHttpSecurity http) {
-        RateLimitingWebFilter rateLimitingFilter =
-                new RateLimitingWebFilter(
-                        rateLimiter,
-                        ultimateProperties.security()
-                                .rateLimiting());
-
-        return http
+        ServerHttpSecurity configured = http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .addFilterBefore(
                         jwtAuthFilter,
                         SecurityWebFiltersOrder.AUTHENTICATION
-                )
-                .addFilterAfter(
-                        rateLimitingFilter,
-                        SecurityWebFiltersOrder.AUTHENTICATION
-                )
+                );
+
+        FixedWindowRateLimiter limiter = rateLimiter.getIfAvailable();
+        UltimateProperties properties = ultimateProperties.getIfAvailable();
+        if (limiter != null && properties != null) {
+            configured = configured.addFilterAfter(
+                    new RateLimitingWebFilter(
+                            limiter,
+                            properties.security().rateLimiting()),
+                    SecurityWebFiltersOrder.AUTHENTICATION);
+        }
+
+        return configured
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .anyExchange().authenticated()
