@@ -11,35 +11,15 @@ import org.springframework.stereotype.Component;
 @Component
 public final class RequestStatsHealthIndicator implements HealthIndicator {
 
-    private final RequestStats requestStats;
+    private final AiRequestLogger requestLogger;
 
     public RequestStatsHealthIndicator(AiRequestLogger requestLogger) {
-        this.requestStats = requestLogger.stats() == null
-                ? new RequestStats()
-                : requestLogger.stats() != null ? requestLoggerStats(requestLogger) : new RequestStats();
-    }
-
-    private static RequestStats requestLoggerStats(AiRequestLogger requestLogger) {
-        // Keep the dependency surface intentionally narrow: the logger remains the owner
-        // of request telemetry and only its immutable snapshot crosses this boundary.
-        RequestStats stats = new RequestStats();
-        RequestStats.Snapshot snapshot = requestLogger.stats();
-        for (long i = 0; i < snapshot.started(); i++) {
-            stats.requestStarted();
-        }
-        if (snapshot.completed() > 0) {
-            stats.requestCompleted((int) Math.min(Integer.MAX_VALUE, snapshot.totalTokens()),
-                    snapshot.totalDurationMs());
-        }
-        for (long i = 0; i < snapshot.failed(); i++) {
-            stats.requestFailed();
-        }
-        return stats;
+        this.requestLogger = requestLogger;
     }
 
     @Override
     public Health health() {
-        RequestStats.Snapshot snapshot = requestStats.snapshot();
+        RequestStats.Snapshot snapshot = requestLogger.stats();
         return Health.up()
                 .withDetail("started", snapshot.started())
                 .withDetail("completed", snapshot.completed())
