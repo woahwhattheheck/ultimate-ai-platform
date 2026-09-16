@@ -46,8 +46,14 @@ class SecurityConfigTest {
     }
 
     @Test
-    void anonymousHealthComponentRequestIsAllowed() {
+    void anonymousStandardHealthProbesAreAllowed() {
         webTestClient.get().uri("/actuator/health/liveness").exchange().expectStatus().isOk();
+        webTestClient.get().uri("/actuator/health/readiness").exchange().expectStatus().isOk();
+    }
+
+    @Test
+    void anonymousNamedHealthComponentRequiresAuthentication() {
+        webTestClient.get().uri("/actuator/health/db").exchange().expectStatus().isUnauthorized();
     }
 
     @Test
@@ -61,6 +67,17 @@ class SecurityConfigTest {
                 .mutateWith(mockUser().roles("USER"))
                 .get()
                 .uri("/actuator/metrics")
+                .exchange()
+                .expectStatus()
+                .isForbidden();
+    }
+
+    @Test
+    void authenticatedNonAdminCannotReadNamedHealthComponents() {
+        webTestClient
+                .mutateWith(mockUser().roles("USER"))
+                .get()
+                .uri("/actuator/health/db")
                 .exchange()
                 .expectStatus()
                 .isForbidden();
@@ -99,6 +116,8 @@ class SecurityConfigTest {
         @GetMapping({
                 "/actuator/health",
                 "/actuator/health/liveness",
+                "/actuator/health/readiness",
+                "/actuator/health/db",
                 "/actuator/metrics",
                 "/api/v1/private",
                 "/swagger-ui/index.html"
