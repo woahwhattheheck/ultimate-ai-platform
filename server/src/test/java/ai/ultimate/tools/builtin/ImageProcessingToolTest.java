@@ -239,7 +239,7 @@ class ImageProcessingToolTest {
 
         String result = process(tool, workspace, List.of("input.png"));
 
-        assertEquals("{\\\"error\\\":\\\"Image Processing Error: native message end\\\"}", result);
+        assertEquals("{\"error\":\"Image Processing Error: native message end\"}", result);
         assertFalse(result.chars().anyMatch(character -> character < 0x20));
         assertNoRuntime();
     }
