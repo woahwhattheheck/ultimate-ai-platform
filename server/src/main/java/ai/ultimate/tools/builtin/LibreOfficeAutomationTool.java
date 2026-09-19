@@ -37,6 +37,7 @@ import org.springframework.stereotype.Component;
 public class LibreOfficeAutomationTool implements UltimateTool {
     static final int MAX_PAYLOAD_BYTES = 5_000_000;
     static final int MAX_OUTPUT_BYTES = 10_000_000;
+    static final int MAX_TOTAL_OUTPUT_BYTES = 10_000_000;
     static final int MAX_BATCH = 4;
     static final BigDecimal MAX_SESSION_USD = new BigDecimal("150.00");
     static final Duration PROCESS_TIMEOUT = Duration.ofSeconds(60);
@@ -94,6 +95,7 @@ public class LibreOfficeAutomationTool implements UltimateTool {
             }
             runtime = createRuntime();
             List<String> outputs = new ArrayList<>();
+            long totalOutputBytes = 0;
             for (int i = 0; i < inputs.size(); i++) {
                 Path operation = Files.createDirectory(runtime.resolve("document-" + (i + 1)));
                 Path profile = Files.createDirectory(operation.resolve("profile"));
@@ -118,6 +120,11 @@ public class LibreOfficeAutomationTool implements UltimateTool {
                 }
                 if (!hasSignature(bytes, outputFormat)) {
                     throw new DocumentException("LibreOffice output does not match the requested format.");
+                }
+                totalOutputBytes += bytes.length;
+                if (totalOutputBytes > MAX_TOTAL_OUTPUT_BYTES) {
+                    throw new DocumentException(
+                            "Combined document output exceeds the 10,000,000 byte response limit.");
                 }
                 outputs.add("{\"name\":\"document-" + (i + 1) + "." + outputFormat
                         + "\",\"encoding\":\"base64\",\"data\":\""

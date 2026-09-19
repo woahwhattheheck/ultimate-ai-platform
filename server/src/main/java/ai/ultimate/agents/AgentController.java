@@ -145,32 +145,16 @@ public class AgentController {
                             userId,
                             request.goal().length());
 
-                    // Start agent — subscribe but
-                    // don't wait for completion
-                    orchestrator
-                            .startAgent(
+                    return orchestrator
+                            .startAgentAsync(
                                     request.goal(),
                                     userId,
                                     request.sessionId())
-                            .subscribe(
-                                    null,
-                                    error -> log.error(
-                                            "Async agent error: {}",
-                                            error.getMessage()));
-
-                    // Return accepted immediately
-                    // with placeholder response
-                    Agent pending = Agent.create(
-                            userId,
-                            request.sessionId(),
-                            request.goal());
-
-                    return Mono.just(ApiResponse.ok(
-                            agentMapper.toResponse(
-                                    pending),
-                            "Agent started. "
-                                    + "Poll GET /agents/{id} "
-                                    + "for status."));
+                            .map(agent -> ApiResponse.ok(
+                                    agentMapper.toResponse(agent),
+                                    "Agent started. "
+                                            + "Poll GET /agents/{id} "
+                                            + "for status."));
                 });
     }
 

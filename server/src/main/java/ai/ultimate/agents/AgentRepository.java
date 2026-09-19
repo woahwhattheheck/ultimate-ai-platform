@@ -63,7 +63,7 @@ public interface AgentRepository
      *
      * completed_at auto-set for terminal states.
      *
-     *Compare-and-set status update.
+     * Compare-and-set status update.
      *
      * WHERE clause now includes:
      * AND status = :expectedCurrentStatus
@@ -80,6 +80,7 @@ public interface AgentRepository
      * @param stepCount             updated step count
      * @param finalAnswer           answer if COMPLETED
      * @param errorMessage          error if FAILED
+     * @param durationMs            measured duration for COMPLETED
      * @return 1 if updated, 0 if already changed
      */
     @Modifying
@@ -89,6 +90,7 @@ public interface AgentRepository
                 step_count = :stepCount,
                 final_answer = :finalAnswer,
                 error_message = :errorMessage,
+                duration_ms = :durationMs,
                 completed_at = CASE
                     WHEN :status IN (
                         'COMPLETED', 'FAILED', 'CANCELLED'
@@ -106,5 +108,6 @@ public interface AgentRepository
             String status,
             int stepCount,
             String finalAnswer,
-            String errorMessage);
+            String errorMessage,
+            Integer durationMs);
 }

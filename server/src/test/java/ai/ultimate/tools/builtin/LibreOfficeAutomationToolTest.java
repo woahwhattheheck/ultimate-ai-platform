@@ -186,6 +186,14 @@ class LibreOfficeAutomationToolTest {
     }
 
     @Test
+    void rejectsAggregateOutputBeyondResponseLimit() throws Exception {
+        var tool = tool(allowForTest(), child("aggregate"));
+        assertThat(tool.processDocuments(new String[]{"first", "second"}, "txt", "pdf", "", CONTEXT))
+                .contains("Combined document output exceeds the 10,000,000 byte response limit.");
+        assertEmptyRoot();
+    }
+
+    @Test
     void cleansOutputsProfilesAndTemporaryFilesOnFailure() throws Exception {
         for (String mode : List.of("exit-error", "missing", "empty", "oversized", "invalid")) {
             var tool = tool(allowForTest(), child(mode));
@@ -319,6 +327,10 @@ class LibreOfficeAutomationToolTest {
                     bytes = new byte[0];
                 } else if ("oversized".equals(mode)) {
                     bytes = new byte[10_000_001];
+                } else if ("aggregate".equals(mode)) {
+                    bytes = new byte[5_000_001];
+                    byte[] signature = "%PDF-1.7 fixture".getBytes(StandardCharsets.UTF_8);
+                    System.arraycopy(signature, 0, bytes, 0, signature.length);
                 } else if ("invalid".equals(mode)) {
                     bytes = "invalid".getBytes(StandardCharsets.UTF_8);
                 }

@@ -17,6 +17,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -101,7 +102,7 @@ public class CodiumAutomationTool implements UltimateTool {
             return "Blueprint Creation Crash: Local OS IO channel threw write anomalies: " + e.getMessage();
         }
 
-        String containerName = "ultimate_secure_pipeline_" + System.currentTimeMillis();
+        String containerName = newContainerName();
         String targetImage = (customDockerImage != null && !customDockerImage.trim().isEmpty()) ? customDockerImage.trim() : 
                              ("apk".equalsIgnoreCase(buildType) ? PINNED_ANDROID_IMAGE : PINNED_MAVEN_IMAGE);
 
@@ -178,6 +179,10 @@ public class CodiumAutomationTool implements UltimateTool {
             terminateContainerForcibly(containerName);
             if (!"apk".equalsIgnoreCase(buildType)) cleanWorkspaceSafely(cleanPath);
         }
+    }
+
+    static String newContainerName() {
+        return "ultimate_secure_pipeline_" + UUID.randomUUID();
     }
 
     private boolean isPayloadSizeBreached(String code, String manifest, String layout) {

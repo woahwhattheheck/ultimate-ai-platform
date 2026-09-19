@@ -43,7 +43,7 @@ Every payload is evaluated independently using `StandardCharsets.UTF_8` and
 limited to **5,000,000 bytes**, including the Base64 representation for binary
 inputs. This is deliberately a strict decimal 5 MB ceiling. Binary signatures,
 format pairs, batch count and PDF page syntax are validated before allocation.
-Each output is limited to 10,000,000 bytes and returned as Base64:
+Each output is limited to 10,000,000 bytes, and each batch is also capped at 10,000,000 raw output bytes before Base64 encoding so multi-document requests cannot multiply the response bound. Results are returned as Base64:
 
 ```json
 {"documents":[{"name":"document-1.pdf","encoding":"base64","data":"..."}]}

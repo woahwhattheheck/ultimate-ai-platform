@@ -12,13 +12,15 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.intThat;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -51,7 +53,7 @@ class AgentOrchestratorTest {
         userId = UUID.randomUUID();
     }
 
-    // ── startAgent() tests ────────────────────────
+    // ── startAgent() tests ────────────────
 
     @Test
     @DisplayName("startAgent() creates PENDING then RUNNING agent")
@@ -66,10 +68,14 @@ class AgentOrchestratorTest {
                 .insert(any(Agent.class)))
                 .thenReturn(Mono.just(pendingAgent));
 
-        // DB update to RUNNING → returns runningAgent
-        when(r2dbcEntityTemplate
-                .update(any(Agent.class)))
-                .thenReturn(Mono.just(runningAgent));
+        // PENDING → RUNNING is a compare-and-set lifecycle transition.
+        when(agentRepository.updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull()))
+                .thenReturn(Mono.just(1));
 
         // Executor returns immediate FINAL event
         when(executor.execute(
@@ -85,7 +91,7 @@ class AgentOrchestratorTest {
 
         when(agentRepository.updateStatus(
                 any(), anyString(), anyString(),
-                anyInt(), anyString(), isNull()))
+                anyInt(), anyString(), isNull(), anyInt()))
                 .thenReturn(Mono.just(1));
 
         StepVerifier
@@ -97,6 +103,22 @@ class AgentOrchestratorTest {
                                 && event.data()
                                 .equals("Done!"))
                 .verifyComplete();
+
+        verify(agentRepository).updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull());
+
+        verify(agentRepository).updateStatus(
+                eq(runningAgent.id()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(AgentStatus.COMPLETED.name()),
+                eq(1),
+                eq("Done!"),
+                isNull(),
+                intThat(duration -> duration >= 0));
     }
 
     @Test
@@ -110,9 +132,14 @@ class AgentOrchestratorTest {
         when(r2dbcEntityTemplate
                 .insert(any(Agent.class)))
                 .thenReturn(Mono.just(pendingAgent));
-        when(r2dbcEntityTemplate
-                .update(any(Agent.class)))
-                .thenReturn(Mono.just(runningAgent));
+
+        when(agentRepository.updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull()))
+                .thenReturn(Mono.just(1));
 
         // Executor returns ERROR event
         when(executor.execute(
@@ -120,9 +147,13 @@ class AgentOrchestratorTest {
                 .thenReturn(Flux.just(
                         AgentEvent.error("AI failed")));
 
+        when(stepRepository
+                .countByAgentId(any(UUID.class)))
+                .thenReturn(Mono.just(0L));
+
         when(agentRepository.updateStatus(
                 any(), anyString(), anyString(),
-                anyInt(), isNull(), anyString()))
+                anyInt(), isNull(), anyString(), isNull()))
                 .thenReturn(Mono.just(1));
 
         StepVerifier
@@ -132,9 +163,25 @@ class AgentOrchestratorTest {
                         event.type() ==
                                 AgentEvent.EventType.ERROR)
                 .verifyComplete();
+
+        verify(agentRepository).updateStatus(
+                eq(pendingAgent.id()),
+                eq(AgentStatus.PENDING.name()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(pendingAgent.stepCount()),
+                isNull(), isNull(), isNull());
+
+        verify(agentRepository).updateStatus(
+                eq(runningAgent.id()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(AgentStatus.FAILED.name()),
+                eq(0),
+                isNull(),
+                eq("AI failed"),
+                isNull());
     }
 
-    // ── getUserAgents() tests ─────────────────────
+    // ── getUserAgents() tests ───────────────
 
     @Test
     @DisplayName("getUserAgents() returns all user agents")
@@ -158,7 +205,7 @@ class AgentOrchestratorTest {
                 .verifyComplete();
     }
 
-    // ── getAgent() tests ──────────────────────────
+    // ── getAgent() tests ────────────────────
 
     @Test
     @DisplayName("getAgent() returns agent with steps")
@@ -210,7 +257,7 @@ class AgentOrchestratorTest {
                 .verify();
     }
 
-    // ── cancelAgent() tests ───────────────────────
+    // ── cancelAgent() tests ───────────────
 
     @Test
     @DisplayName("cancelAgent() cancels RUNNING agent")
@@ -226,13 +273,22 @@ class AgentOrchestratorTest {
 
         when(agentRepository.updateStatus(
                 any(), anyString(), anyString(),
-                anyInt(), isNull(), isNull()))
+                anyInt(), isNull(), isNull(), isNull()))
                 .thenReturn(Mono.just(1));
 
         StepVerifier
                 .create(orchestrator.cancelAgent(
                         running.id(), userId))
                 .verifyComplete();
+
+        verify(agentRepository).updateStatus(
+                eq(running.id()),
+                eq(AgentStatus.RUNNING.name()),
+                eq(AgentStatus.CANCELLED.name()),
+                eq(running.stepCount()),
+                isNull(),
+                isNull(),
+                isNull());
     }
 
     @Test

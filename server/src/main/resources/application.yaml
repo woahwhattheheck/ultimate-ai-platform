@@ -219,15 +219,29 @@ Ultimate:
 # ═══════════════════════════════════════════════════
 management:
   endpoints:
+    access:
+      default: none
     web:
+      discovery:
+        enabled: false
       exposure:
         include: health,info,metrics,loggers,prometheus
   endpoint:
     health:
-      show-details: always
-      show-components: always
+      access: read-only
+      show-details: when-authorized
+      show-components: when-authorized
+      roles: ADMIN
       probes:
         enabled: false
+    info:
+      access: read-only
+    metrics:
+      access: read-only
+    loggers:
+      access: read-only
+    prometheus:
+      access: read-only
   info:
     env:
       enabled: true

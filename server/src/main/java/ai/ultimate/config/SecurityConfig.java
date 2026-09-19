@@ -1,7 +1,10 @@
 package ai.ultimate.config;
 
 import ai.ultimate.security.jwt.JwtAuthenticationFilter;
+import ai.ultimate.security.ratelimit.FixedWindowRateLimiter;
+import ai.ultimate.security.ratelimit.RateLimitingWebFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
@@ -18,30 +21,53 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthFilter;
-
-    // Public endpoints — no JWT required.
-    // Use CLI commands (status, doctor, benchmark-latency)
-    // to verify Ollama connectivity instead.
     private static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/**",
             "/swagger-ui.html",
             "/swagger-ui/**",
             "/v3/api-docs/**",
-            "/webjars/**",
-            "/actuator/health"
+            "/webjars/**"
     };
+
+    private static final String[] PUBLIC_HEALTH_ENDPOINTS = {
+            "/actuator/health",
+            "/actuator/health/liveness",
+            "/actuator/health/readiness"
+    };
+
+    private static final String[] ADMIN_ACTUATOR_ENDPOINTS = {
+            "/actuator",
+            "/actuator/**"
+    };
+
+    private final JwtAuthenticationFilter jwtAuthFilter;
+    private final ObjectProvider<FixedWindowRateLimiter> rateLimiter;
+    private final ObjectProvider<UltimateProperties> ultimateProperties;
 
     @Bean
     public SecurityWebFilterChain securityFilterChain(
             ServerHttpSecurity http) {
-        return http
+        ServerHttpSecurity configured = http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .addFilterBefore(
                         jwtAuthFilter,
                         SecurityWebFiltersOrder.AUTHENTICATION
-                )
+                );
+
+        FixedWindowRateLimiter limiter = rateLimiter.getIfAvailable();
+        UltimateProperties properties = ultimateProperties.getIfAvailable();
+        if (limiter != null && properties != null) {
+            configured = configured.addFilterAfter(
+                    new RateLimitingWebFilter(
+                            limiter,
+                            properties.security().rateLimiting()),
+                    SecurityWebFiltersOrder.AUTHENTICATION);
+        }
+
+        return configured
                 .authorizeExchange(exchanges -> exchanges
+                        .pathMatchers(PUBLIC_HEALTH_ENDPOINTS).permitAll()
+                        .pathMatchers(ADMIN_ACTUATOR_ENDPOINTS).hasRole("ADMIN")
                         .pathMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .anyExchange().authenticated()
                 )
