@@ -418,9 +418,20 @@ public class ImageProcessingTool implements UltimateTool {
     }
 
     private static String error(String message) {
-        String safe = message == null ? "Image processing failed." : message;
-        safe = safe.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\r", " ").replace("\n", " ").replace("\t", " ");
+        String raw = message == null ? "Image processing failed." : message;
+        StringBuilder safe = new StringBuilder(raw.length());
+        for (int i = 0; i < raw.length(); i++) {
+            char ch = raw.charAt(i);
+            if (ch == '\\') {
+                safe.append("\\\\");
+            } else if (ch == '"') {
+                safe.append("\\\"");
+            } else if (ch < 0x20) {
+                safe.append(' ');
+            } else {
+                safe.append(ch);
+            }
+        }
         return "{\"error\":\"Image Processing Error: " + safe + "\"}";
     }
 

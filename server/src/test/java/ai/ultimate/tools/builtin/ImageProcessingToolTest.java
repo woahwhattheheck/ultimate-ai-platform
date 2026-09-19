@@ -231,6 +231,20 @@ class ImageProcessingToolTest {
     }
 
     @Test
+    void errorResponseSanitizesEveryJsonForbiddenControlCharacter() throws Exception {
+        Path workspace = workspace();
+        ImageProcessingTool tool = tool((command, runtime, timeout) -> {
+            throw new IOException("native" + (char) 1 + "message" + (char) 12 + "end");
+        });
+
+        String result = process(tool, workspace, List.of("input.png"));
+
+        assertEquals("{\\\"error\\\":\\\"Image Processing Error: native message end\\\"}", result);
+        assertFalse(result.chars().anyMatch(character -> character < 0x20));
+        assertNoRuntime();
+    }
+
+    @Test
     void reportsMissingExecutableTimeoutAndInterruptionThenCleansRuntime() throws Exception {
         Path workspace = workspace();
         ImageProcessingTool missing = tool((command, runtime, timeout) -> {
