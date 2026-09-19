@@ -1,0 +1,120 @@
+name: LibreOffice exact d110 validation
+
+on:
+  push:
+    branches:
+      - zz-cinder17/libreoffice-exact-d110-20260919
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  LIBREOFFICE_BOUNTY_SHA: d1108725e74ad41edad08cf3f0291d75d868c591
+
+jobs:
+  exact-clean-verify:
+    name: Exact d110 clean verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ultimate
+          POSTGRES_PASSWORD: ultimate
+          POSTGRES_DB: ultimate
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact bounty source
+        uses: actions/checkout@v7.0.0
+        with:
+          ref: ${{ env.LIBREOFFICE_BOUNTY_SHA }}
+          fetch-depth: 1
+      - name: Prove exact source generation
+        run: |
+          test "$(git rev-parse HEAD)" = "$LIBREOFFICE_BOUNTY_SHA"
+          test -z "$(git status --porcelain=v1)"
+      - name: Set up Java 21
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Build and test exact bounty source
+        working-directory: server
+        env:
+          DATABASE_URL: r2dbc:postgresql://localhost:5432/Ultimate
+          FLYWAY_URL: jdbc:postgresql://localhost:5432/Ultimate
+          DATABASE_USERNAME: ultimate
+          DATABASE_PASSWORD: ultimate
+          Ultimate_JWT_SECRET: test-secret-key-minimum-32-chars-long-enough
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+        run: |
+          chmod +x mvnw
+          ./mvnw clean verify
+      - name: Upload exact-source test reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: libreoffice-d110-exact-test-results
+          path: server/target/surefire-reports/
+          if-no-files-found: warn
+
+  exact-libreoffice-native:
+    name: Exact d110 LibreOffice native suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact bounty source
+        uses: actions/checkout@v7.0.0
+        with:
+          ref: ${{ env.LIBREOFFICE_BOUNTY_SHA }}
+          fetch-depth: 1
+      - name: Prove exact source generation
+        run: |
+          test "$(git rev-parse HEAD)" = "$LIBREOFFICE_BOUNTY_SHA"
+          test -z "$(git status --porcelain=v1)"
+      - name: Set up Java 21
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Install LibreOffice and PDF inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-calc libreoffice-draw poppler-utils
+          soffice --version
+          pdfinfo -v
+      - name: Run exact focused and real document tests
+        working-directory: server
+        env:
+          LIBREOFFICE_SMOKE: 'true'
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -Dtest=LibreOfficeAutomationToolTest,LibreOfficeAutomationToolRegistryTest,LibreOfficeAutomationToolSmokeTest test
+      - name: Upload exact native test reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: libreoffice-d110-native-test-results
+          path: server/target/surefire-reports/
+          if-no-files-found: warn
