@@ -1,0 +1,43 @@
+name: LibreOffice document tests
+
+on:
+  pull_request:
+    paths:
+      - 'server/src/main/java/ai/ultimate/tools/builtin/LibreOffice*.java'
+      - 'server/src/test/java/ai/ultimate/tools/**/LibreOffice*.java'
+      - '.github/workflows/libreoffice.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  document-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.4.0
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Install document tools on the hosted runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-calc libreoffice-draw poppler-utils
+          soffice --version
+      - name: Run focused unit and real document tests
+        working-directory: server
+        env:
+          LIBREOFFICE_SMOKE: 'true'
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -Dtest=LibreOfficeAutomationToolTest,LibreOfficeAutomationToolRegistryTest,LibreOfficeAutomationToolSmokeTest test
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: libreoffice-test-results
+          path: server/target/surefire-reports/
+          if-no-files-found: warn
