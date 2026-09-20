@@ -6,6 +6,7 @@ import static ai.ultimate.chat.message.MessageFactory.generateUserMessage;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -101,7 +103,7 @@ class AiOrchestratorTest {
 
         Prompt prompt = mock(Prompt.class);
         AiProvider aiProvider = mock(AiProvider.class);
-        when(aiProvider.streamChat(prompt)).thenReturn(Flux.just("Hello"," back"));
+        when(aiProvider.streamChat(prompt, anyMap())).thenReturn(Flux.just("Hello"," back"));
         when(aiProvider.getModelName()).thenReturn(MODEL_NAME);
 
         when(this.r2dbcEntityTemplate.insert(any(Message.class))).thenReturn(Mono.just(userMsg));
@@ -124,7 +126,16 @@ class AiOrchestratorTest {
         ArgumentCaptor<Message> messageArgumentCaptor = ArgumentCaptor.forClass(Message.class);
         InOrder inOrder = inOrder(this.r2dbcEntityTemplate, aiProvider);
         inOrder.verify(this.r2dbcEntityTemplate).insert(messageArgumentCaptor.capture());
-        inOrder.verify(aiProvider).streamChat(any(Prompt.class));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> toolContextCaptor =
+                ArgumentCaptor.forClass(Map.class);
+        inOrder.verify(aiProvider).streamChat(
+                any(Prompt.class),
+                toolContextCaptor.capture());
+        assertEquals(sessionId,
+                toolContextCaptor.getValue().get("ultimate.sessionId"));
+        assertEquals(userId,
+                toolContextCaptor.getValue().get("ultimate.userId"));
 
         Message userMessage = messageArgumentCaptor.getAllValues()
                 .getFirst();
@@ -159,7 +170,7 @@ class AiOrchestratorTest {
         Message userMsg = generateUserMessage(sessionId, message);
 
         Prompt prompt = mock(Prompt.class);
-        when(aiProvider.streamChat(prompt)).thenReturn(Flux.just("Hello"," back"));
+        when(aiProvider.streamChat(prompt, anyMap())).thenReturn(Flux.just("Hello"," back"));
         when(aiProvider.getModelName()).thenReturn(modelName);
 
         when(this.r2dbcEntityTemplate.insert(any(Message.class))).thenReturn(Mono.just(userMsg));
@@ -223,7 +234,7 @@ class AiOrchestratorTest {
 
         Prompt prompt = mock(Prompt.class);
         AiProvider aiProvider = mock(AiProvider.class);
-        when(aiProvider.streamChat(prompt)).thenReturn(Flux.just("Hello"," back"));
+        when(aiProvider.streamChat(prompt, anyMap())).thenReturn(Flux.just("Hello"," back"));
         when(aiProvider.getModelName()).thenReturn(MODEL_NAME);
 
         when(this.r2dbcEntityTemplate.insert(any(Message.class))).thenReturn(Mono.just(userMsg)).thenReturn(Mono.just(assistantMsg));
@@ -270,7 +281,7 @@ class AiOrchestratorTest {
 
         Prompt prompt = mock(Prompt.class);
         AiProvider aiProvider = mock(AiProvider.class);
-        when(aiProvider.streamChat(prompt)).thenReturn(Flux.just("Hello"," back"));
+        when(aiProvider.streamChat(prompt, anyMap())).thenReturn(Flux.just("Hello"," back"));
         when(aiProvider.getModelName()).thenReturn(MODEL_NAME);
 
         when(this.r2dbcEntityTemplate.insert(any(Message.class))).thenReturn(Mono.just(userMsg));
