@@ -478,8 +478,8 @@ class ImageProcessingToolTest {
         String markedResult = tool.processImages(workspace.toString(), List.of("input.png"),
                 "marked", "png", 80, 40, false, 100, 100, 90, "SECURITY");
 
-        assertFalse(plainResult.contains("\\\"error\\\""), plainResult);
-        assertFalse(markedResult.contains("\\\"error\\\""), markedResult);
+        assertFalse(plainResult.contains("\"error\""), plainResult);
+        assertFalse(markedResult.contains("\"error\""), markedResult);
         BufferedImage plain = ImageIO.read(new ByteArrayInputStream(firstArtifact(plainResult)));
         BufferedImage marked = ImageIO.read(new ByteArrayInputStream(firstArtifact(markedResult)));
         assertNotNull(plain);
