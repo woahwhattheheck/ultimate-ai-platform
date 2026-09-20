@@ -7,7 +7,6 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -90,7 +89,7 @@ public final class LibreOfficeJdbcComputeBudget implements LibreOfficeComputeBud
                     sessionId,
                     requested,
                     maximumSessionUsd) == 1;
-        } catch (DataAccessException | RuntimeException failure) {
+        } catch (RuntimeException failure) {
             // Billing/allocation state is authoritative. Any uncertainty denies work.
             return false;
         }
