@@ -109,7 +109,8 @@ public class ImageProcessingTool implements UltimateTool {
                 inputs.add(input);
             }
 
-            runtime = Files.createTempDirectory(root, ".ultimate-image-").toRealPath();
+            Path createdRuntime = Files.createTempDirectory(root, ".ultimate-image-");
+            runtime = canonicalizeRuntime(createdRuntime, root);
             List<String> artifacts = new ArrayList<>();
             long totalOutputBytes = 0;
 
@@ -176,6 +177,26 @@ public class ImageProcessingTool implements UltimateTool {
             }
         }
         return result;
+    }
+
+    static Path canonicalizeRuntime(Path runtime, Path canonicalRoot) throws IOException {
+        try {
+            Path canonicalRuntime = runtime.toRealPath();
+            if (!canonicalRoot.equals(canonicalRuntime.getParent())) {
+                throw new IOException(
+                        "Generated image runtime escaped its managed workspace root.");
+            }
+            return canonicalRuntime;
+        } catch (IOException | RuntimeException failure) {
+            try {
+                if (Files.exists(runtime, LinkOption.NOFOLLOW_LINKS)) {
+                    cleanup(runtime);
+                }
+            } catch (IOException | RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
+        }
     }
 
     private Path canonicalRoot() throws IOException {
