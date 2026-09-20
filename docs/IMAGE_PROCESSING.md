@@ -82,6 +82,12 @@ with an argument vector rather than a shell, bounds native thread/memory/map/dis
 and dimensions, and enforces a 30-second timeout per image. Output signatures
 must match the requested PNG, JPEG, or WebP format.
 
+The ImageMagick child receives an allowlisted host environment limited to process
+launch/locale settings plus ImageMagick, font and dynamic-loader configuration.
+Private `HOME`, temporary-directory aliases and `MAGICK_TEMPORARY_PATH` are forced
+to the generated runtime. Unrelated database, cloud, proxy and service credentials
+are not inherited by the native image process.
+
 The complete private runtime—including staged inputs, generated outputs, pixel
 caches, and intermediates—is traversed without following symbolic links and
 deleted in `finally` after the response artifact bytes have been captured.
