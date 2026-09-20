@@ -21,8 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilterChain;
 
-@WebFluxTest(controllers = SecurityConfigTest.TestController.class)
-@Import(SecurityConfig.class)
+@WebFluxTest
+@Import({SecurityConfig.class, SecurityConfigTest.TestController.class})
 @DisplayName("SecurityConfig actuator authorization")
 class SecurityConfigTest {
 
@@ -131,7 +131,7 @@ class SecurityConfigTest {
                 "/api/v1/private",
                 "/swagger-ui/index.html"
         })
-        Map<String, String> ok() {
+        public Map<String, String> ok() {
             return Map.of("status", "ok");
         }
     }
