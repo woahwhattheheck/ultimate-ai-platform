@@ -22,7 +22,7 @@ import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilterChain;
 
 @WebFluxTest(controllers = SecurityConfigTest.TestController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, SecurityConfigTest.TestController.class})
 @DisplayName("SecurityConfig actuator authorization")
 class SecurityConfigTest {
 
