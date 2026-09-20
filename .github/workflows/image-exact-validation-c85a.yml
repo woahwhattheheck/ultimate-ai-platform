@@ -1,4 +1,4 @@
-name: ImageMagick c85 exact-head validation
+name: ImageMagick current submission validation
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  IMAGE_BOUNTY_SHA: c85a7d3ff972bb9fea7b3da52a00eec9912aad7b
+  IMAGE_BOUNTY_SHA: c4ded07beeb9f4f176ad58c182b97d7c21e66209
 
 jobs:
   exact-source-verify:
@@ -112,8 +112,8 @@ jobs:
         working-directory: server
         run: |
           chmod +x mvnw
-          ./mvnw '-Dtest=ai.ultimate.tools.builtin.ImageProcessingToolTest#nativeImageMagickSmokeReturnsArtifactAndLeavesNoGeneratedFile' test
-      - name: Require one executed test and zero skips
+          ./mvnw '-Dtest=ai.ultimate.tools.builtin.ImageProcessingToolTest#native*' test
+      - name: Require both native tests and zero skips
         run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
@@ -121,5 +121,5 @@ jobs:
           suite = ET.parse(path).getroot()
           result = {key: int(suite.get(key, "0")) for key in ("tests", "failures", "errors", "skipped")}
           print(result)
-          assert result == {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}, result
+          assert result == {"tests": 2, "failures": 0, "errors": 0, "skipped": 0}, result
           PY
