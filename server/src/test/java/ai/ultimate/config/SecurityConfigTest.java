@@ -21,11 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilterChain;
 
-@WebFluxTest
-@Import({
-        SecurityConfig.class,
-        SecurityConfigTest.TestController.class
-})
+@WebFluxTest(controllers = SecurityConfigTest.TestController.class)
+@Import(SecurityConfig.class)
 @DisplayName("SecurityConfig actuator authorization")
 class SecurityConfigTest {
 
@@ -123,7 +120,7 @@ class SecurityConfigTest {
     }
 
     @RestController
-    static class TestController {
+    public static class TestController {
 
         @GetMapping({
                 "/actuator/health",
