@@ -417,8 +417,11 @@ public class ImageProcessingTool implements UltimateTool {
         });
     }
 
-    private static String error(String message) {
+    private String error(String message) {
         String raw = message == null ? "Image processing failed." : message;
+        if (managedRoot.getNameCount() > 0) {
+            raw = raw.replace(managedRoot.toString(), "<managed-workspace>");
+        }
         StringBuilder safe = new StringBuilder(raw.length());
         for (int i = 0; i < raw.length(); i++) {
             char ch = raw.charAt(i);
