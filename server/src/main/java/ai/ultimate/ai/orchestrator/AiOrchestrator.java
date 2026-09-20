@@ -19,6 +19,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -159,7 +160,20 @@ public class AiOrchestrator {
                                     ? 0 : 1  // ← NEW
                     );
 
-                    return provider.streamChat(prompt)
+                    Map<String, Object> toolContext =
+                            request.userId() == null
+                                    ? Map.of(
+                                            "ultimate.sessionId",
+                                            request.sessionId())
+                                    : Map.of(
+                                            "ultimate.sessionId",
+                                            request.sessionId(),
+                                            "ultimate.userId",
+                                            request.userId());
+
+                    return provider.streamChat(
+                                    prompt,
+                                    toolContext)
                             .doOnNext(token -> {
                                 responseBuilder
                                         .append(token);

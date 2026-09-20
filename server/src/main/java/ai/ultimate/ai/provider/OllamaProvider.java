@@ -12,6 +12,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.Map;
 
 /**
  * Ollama AI provider — local primary provider.
@@ -62,8 +63,26 @@ public class OllamaProvider implements AiProvider {
 
     @Override
     public Flux<String> streamChat(Prompt prompt) {
-        // PHASE 4: Register tools if available
+        return streamChat(prompt, Map.of());
+    }
+
+    @Override
+    public Flux<String> streamChat(
+            Prompt prompt,
+            Map<String, Object> toolContext) {
+        // PHASE 4: Register tools if available.
         if (toolRegistry.hasTools()) {
+            if (toolContext != null && !toolContext.isEmpty()) {
+                return chatClient
+                        .prompt(prompt)
+                        .tools(toolRegistry.asArray())
+                        .toolContext(toolContext)
+                        .stream()
+                        .content()
+                        .filter(token ->
+                                token != null
+                                        && !token.isEmpty());
+            }
             return chatClient
                     .prompt(prompt)
                     .tools(toolRegistry.asArray())
@@ -74,7 +93,7 @@ public class OllamaProvider implements AiProvider {
                                     && !token.isEmpty());
         }
 
-        // No tools — standard streaming
+        // No tools — standard streaming.
         return chatClient
                 .prompt(prompt)
                 .stream()

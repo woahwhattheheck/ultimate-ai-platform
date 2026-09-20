@@ -8,16 +8,15 @@ import org.springframework.ai.chat.model.ToolContext;
 /**
  * Server-side integration point; never populated from model arguments.
  *
- * A host implementation must resolve a trusted session/window from context and
- * atomically reserve the full worst-case cost of ALL operations in the batch.
- * It must include prior and concurrent reservations, enforce the supplied USD
- * cap, and reject absent/expired context, unknown tariffs and ledger failures.
- * The reservation must remain charged if execution fails; refunds, if any, need
- * independently verified usage. It must work across every serving instance.
+ * Implementations resolve a trusted session/window from ToolContext and
+ * atomically reserve the full worst-case allocation of ALL operations in the
+ * batch. Reservations include prior and concurrent use and fail closed on
+ * missing identity or ledger errors.
  *
- * Current main has no authoritative USD/session-window ledger. No permissive
- * default implementation is provided: the tool rejects execution without one.
- * Implementing this interface is not by itself proof of a real billing cap.
+ * The default application wiring is LibreOfficeJdbcComputeBudget, which uses
+ * the authenticated chat session id placed into ToolContext by AiOrchestrator
+ * and a PostgreSQL row-level atomic reservation. Hosts may replace this bean
+ * with a stricter shared allocator without changing the tool schema.
  */
 @FunctionalInterface
 public interface LibreOfficeComputeBudget {

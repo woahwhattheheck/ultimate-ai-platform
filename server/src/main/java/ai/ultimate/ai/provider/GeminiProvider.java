@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.Map;
+
 /**
  * Gemini AI provider — cloud fallback.
  *
@@ -84,13 +86,28 @@ public class GeminiProvider implements AiProvider {
 
     @Override
     public Flux<String> streamChat(Prompt prompt) {
+        return streamChat(prompt, Map.of());
+    }
+
+    @Override
+    public Flux<String> streamChat(
+            Prompt prompt,
+            Map<String, Object> toolContext) {
         if (chatClient == null) {
             return Flux.error(new RuntimeException(
                     "Gemini API key not configured."));
         }
 
-        // PHASE 4: Register tools if available
+        // ToolContext is server-owned metadata (session/user identity), not model input.
         if (toolRegistry.hasTools()) {
+            if (toolContext != null && !toolContext.isEmpty()) {
+                return chatClient
+                        .prompt(prompt)
+                        .tools(toolRegistry.asArray())
+                        .toolContext(toolContext)
+                        .stream()
+                        .content();
+            }
             return chatClient
                     .prompt(prompt)
                     .tools(toolRegistry.asArray())

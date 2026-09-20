@@ -2,6 +2,8 @@ package ai.ultimate.ai.provider;
 
 import org.springframework.ai.chat.prompt.Prompt;
 import reactor.core.publisher.Flux;
+
+import java.util.Map;
 import reactor.core.publisher.Mono;
 
 /**
@@ -21,6 +23,14 @@ public interface AiProvider {
      * Returns Flux<String> of tokens.
      */
     Flux<String> streamChat(Prompt prompt);
+
+    /**
+     * Stream with server-owned tool context. The context is never exposed as model
+     * input; providers that execute tools should forward it via ChatClient.toolContext().
+     */
+    default Flux<String> streamChat(Prompt prompt, Map<String, Object> toolContext) {
+        return streamChat(prompt);
+    }
 
     /**
      * Check if this provider is available right now.
