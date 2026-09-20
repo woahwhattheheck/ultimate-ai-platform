@@ -328,6 +328,26 @@ class ImageProcessingToolTest {
     }
 
     @Test
+    void rejectsRuntimeSwapBeforeCanonicalizationAndDeletesOnlyTheLink() throws Exception {
+        Path root = Files.createDirectory(temporary.resolve("runtime-root")).toRealPath();
+        Path outside = Files.createDirectory(temporary.resolve("runtime-outside"));
+        Path sentinel = Files.writeString(outside.resolve("keep.txt"), "keep");
+        Path runtime = Files.createTempDirectory(root, ".ultimate-image-");
+        Files.delete(runtime);
+        try {
+            Files.createSymbolicLink(runtime, outside);
+        } catch (UnsupportedOperationException | IOException e) {
+            assumeTrue(false, "Host cannot create symbolic links: " + e.getMessage());
+        }
+
+        IOException failure = assertThrows(IOException.class,
+                () -> ImageProcessingTool.canonicalizeRuntime(runtime, root));
+        assertTrue(failure.getMessage().contains("escaped its managed workspace root"));
+        assertFalse(Files.exists(runtime, java.nio.file.LinkOption.NOFOLLOW_LINKS));
+        assertEquals("keep", Files.readString(sentinel));
+    }
+
+    @Test
     void rejectsASymlinkedManagedRoot() throws Exception {
         Path outside = Files.createDirectory(temporary.resolve("outside-root"));
         Path workspace = Files.createDirectory(outside.resolve("job"));
