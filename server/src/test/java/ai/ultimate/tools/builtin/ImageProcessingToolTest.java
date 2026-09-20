@@ -231,6 +231,43 @@ class ImageProcessingToolTest {
     }
 
     @Test
+    void errorResponseSanitizesEveryJsonForbiddenControlCharacter() throws Exception {
+        Path workspace = workspace();
+        ImageProcessingTool tool = tool((command, runtime, timeout) -> {
+            throw new IOException("native" + (char) 1 + "message" + (char) 12 + "end");
+        });
+
+        String result = process(tool, workspace, List.of("input.png"));
+
+        assertEquals("{\"error\":\"Image Processing Error: native message end\"}", result);
+        assertFalse(result.chars().anyMatch(character -> character < 0x20));
+        assertNoRuntime();
+    }
+
+    @Test
+    void errorResponsesRedactManagedWorkspacePaths() throws Exception {
+        Path workspace = workspace();
+        ImageProcessingTool missingInput = tool((command, runtime, timeout) -> {
+            throw new AssertionError("Missing inputs must fail before ImageMagick starts");
+        });
+
+        String missingInputResult = process(
+                missingInput, workspace, List.of("missing.png"));
+
+        assertTrue(missingInputResult.contains("<managed-workspace>"), missingInputResult);
+        assertFalse(missingInputResult.contains(temporary.toString()), missingInputResult);
+
+        ImageProcessingTool missingExecutable = new ImageProcessingTool(
+                temporary, "definitely-missing-magick-command", ImageProcessingTool::runCommand);
+        String nativeFailure = process(
+                missingExecutable, workspace, List.of("input.png"));
+
+        assertTrue(nativeFailure.contains("<managed-workspace>"), nativeFailure);
+        assertFalse(nativeFailure.contains(temporary.toString()), nativeFailure);
+        assertNoRuntime();
+    }
+
+    @Test
     void reportsMissingExecutableTimeoutAndInterruptionThenCleansRuntime() throws Exception {
         Path workspace = workspace();
         ImageProcessingTool missing = tool((command, runtime, timeout) -> {
