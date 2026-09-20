@@ -430,7 +430,8 @@ class ImageProcessingToolTest {
     }
 
     @Test
-    void nativeImageMagickSmokeReturnsArtifactAndLeavesNoGeneratedFile() throws Exception {
+    void nativeImageMagickSmokeStripsMetadataAppliesWatermarkAndLeavesNoGeneratedFile()
+            throws Exception {
         boolean available = false;
         try {
             Process probe = new ProcessBuilder("magick", "-version")
@@ -446,16 +447,67 @@ class ImageProcessingToolTest {
         assumeTrue(available, "ImageMagick 7 is not installed");
 
         Path workspace = workspace();
+        Path input = workspace.resolve("input.png");
+        Process seed = new ProcessBuilder(
+                "magick", input.toString(),
+                "-set", "comment", "sensitive-metadata",
+                input.toString())
+                .redirectErrorStream(true).start();
+        boolean seedCompleted = seed.waitFor(10, TimeUnit.SECONDS);
+        if (!seedCompleted) {
+            seed.destroyForcibly();
+        }
+        String seedLog = new String(
+                seed.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertTrue(seedCompleted, seedLog);
+        assertEquals(0, seed.exitValue(), seedLog);
+
+        Process sourceMetadata = new ProcessBuilder(
+                "magick", "identify", "-format", "%c", input.toString())
+                .redirectErrorStream(true).start();
+        assertTrue(sourceMetadata.waitFor(10, TimeUnit.SECONDS));
+        String sourceComment = new String(
+                sourceMetadata.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals("sensitive-metadata", sourceComment);
+
         ImageProcessingTool tool = new ImageProcessingTool(
                 temporary, "magick", ImageProcessingTool::runCommand);
-        String result = tool.processImages(workspace.toString(), List.of("input.png"),
-                "crop", "png", 20, 20, true, 100, 100, 90, "");
+        String plainResult = tool.processImages(workspace.toString(), List.of("input.png"),
+                "plain", "png", 80, 40, false, 100, 100, 90, "");
+        String markedResult = tool.processImages(workspace.toString(), List.of("input.png"),
+                "marked", "png", 80, 40, false, 100, 100, 90, "SECURITY");
 
-        assertFalse(result.contains("\"error\""), result);
-        BufferedImage image = ImageIO.read(new ByteArrayInputStream(firstArtifact(result)));
-        assertNotNull(image);
-        assertEquals(20, image.getWidth());
-        assertEquals(20, image.getHeight());
+        assertFalse(plainResult.contains("\\\"error\\\""), plainResult);
+        assertFalse(markedResult.contains("\\\"error\\\""), markedResult);
+        BufferedImage plain = ImageIO.read(new ByteArrayInputStream(firstArtifact(plainResult)));
+        BufferedImage marked = ImageIO.read(new ByteArrayInputStream(firstArtifact(markedResult)));
+        assertNotNull(plain);
+        assertNotNull(marked);
+        assertEquals(80, marked.getWidth());
+        assertEquals(40, marked.getHeight());
+
+        boolean watermarkChangedPixels = false;
+        for (int y = 0; y < marked.getHeight() && !watermarkChangedPixels; y++) {
+            for (int x = 0; x < marked.getWidth(); x++) {
+                if (plain.getRGB(x, y) != marked.getRGB(x, y)) {
+                    watermarkChangedPixels = true;
+                    break;
+                }
+            }
+        }
+        assertTrue(watermarkChangedPixels, "Watermark must change rendered pixels.");
+
+        Path returned = temporary.resolve("returned.png");
+        Files.write(returned, firstArtifact(markedResult));
+        Process outputMetadata = new ProcessBuilder(
+                "magick", "identify", "-format", "%c", returned.toString())
+                .redirectErrorStream(true).start();
+        assertTrue(outputMetadata.waitFor(10, TimeUnit.SECONDS));
+        String outputComment = new String(
+                outputMetadata.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals("", outputComment, "Returned image metadata must be stripped.");
+
+        assertTrue(Files.exists(input));
         try (var files = Files.list(workspace)) {
             assertEquals(List.of("input.png"),
                     files.map(path -> path.getFileName().toString()).sorted().toList());
