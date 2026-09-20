@@ -15,7 +15,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -354,6 +356,39 @@ class ImageProcessingToolTest {
             assertTrue(context.getBeansOfType(ai.ultimate.tools.UltimateTool.class).values()
                     .stream().anyMatch(ImageProcessingTool.class::isInstance));
         }
+    }
+
+    @Test
+    void imageMagickChildDoesNotInheritUnrelatedServerSecrets() {
+        Map<String, String> environment = new HashMap<>();
+        environment.put("Path", "/trusted/bin");
+        environment.put("LANG", "C.UTF-8");
+        environment.put("MAGICK_CONFIGURE_PATH", "/etc/ImageMagick-7");
+        environment.put("HOME", "/server-home");
+        environment.put("DATABASE_URL", "postgres://private");
+        environment.put("AWS_SECRET_ACCESS_KEY", "private-key");
+        environment.put("HTTP_PROXY", "http://credential@proxy");
+
+        Map<String, String> required = Map.of(
+                "MAGICK_TEMPORARY_PATH", "/runtime",
+                "HOME", "/runtime",
+                "TMPDIR", "/runtime",
+                "TMP", "/runtime",
+                "TEMP", "/runtime");
+
+        ImageProcessingTool.restrictProcessEnvironment(environment, required);
+
+        assertEquals("/trusted/bin", environment.get("Path"));
+        assertEquals("C.UTF-8", environment.get("LANG"));
+        assertEquals("/etc/ImageMagick-7", environment.get("MAGICK_CONFIGURE_PATH"));
+        assertEquals("/runtime", environment.get("HOME"));
+        assertEquals("/runtime", environment.get("MAGICK_TEMPORARY_PATH"));
+        assertEquals("/runtime", environment.get("TMPDIR"));
+        assertEquals("/runtime", environment.get("TMP"));
+        assertEquals("/runtime", environment.get("TEMP"));
+        assertFalse(environment.containsKey("DATABASE_URL"));
+        assertFalse(environment.containsKey("AWS_SECRET_ACCESS_KEY"));
+        assertFalse(environment.containsKey("HTTP_PROXY"));
     }
 
     @Test
