@@ -468,6 +468,7 @@ class ImageProcessingToolTest {
         assertTrue(sourceMetadata.waitFor(10, TimeUnit.SECONDS));
         String sourceComment = new String(
                 sourceMetadata.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, sourceMetadata.exitValue(), sourceComment);
         assertEquals("sensitive-metadata", sourceComment);
 
         ImageProcessingTool tool = new ImageProcessingTool(
@@ -505,6 +506,7 @@ class ImageProcessingToolTest {
         assertTrue(outputMetadata.waitFor(10, TimeUnit.SECONDS));
         String outputComment = new String(
                 outputMetadata.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, outputMetadata.exitValue(), outputComment);
         assertEquals("", outputComment, "Returned image metadata must be stripped.");
 
         assertTrue(Files.exists(input));
