@@ -3,6 +3,7 @@ package ai.ultimate.config;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.springSecurity;
 
 import ai.ultimate.security.jwt.JwtAuthenticationFilter;
 import java.util.Map;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -19,25 +21,35 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilterChain;
 
-@WebFluxTest(controllers = SecurityConfigTest.TestController.class)
-@Import(SecurityConfig.class)
+@WebFluxTest
+@Import({
+        SecurityConfig.class,
+        SecurityConfigTest.TestController.class
+})
 @DisplayName("SecurityConfig actuator authorization")
 class SecurityConfigTest {
 
     @Autowired
+    private ApplicationContext applicationContext;
+
     private WebTestClient webTestClient;
 
     @MockitoBean
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @BeforeEach
-    void passJwtFilterThroughForAuthorizationTests() {
+    void configureSecurityTestClient() {
         when(jwtAuthenticationFilter.filter(any(), any()))
                 .thenAnswer(invocation -> {
                     ServerWebExchange exchange = invocation.getArgument(0);
                     WebFilterChain chain = invocation.getArgument(1);
                     return chain.filter(exchange);
                 });
+
+        webTestClient = WebTestClient.bindToApplicationContext(applicationContext)
+                .apply(springSecurity())
+                .configureClient()
+                .build();
     }
 
     @Test
