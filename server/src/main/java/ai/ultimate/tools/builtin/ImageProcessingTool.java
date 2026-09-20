@@ -26,6 +26,7 @@ import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -37,6 +38,11 @@ public class ImageProcessingTool implements UltimateTool {
     static final int MAX_BATCH = 4;
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private static final Set<String> FORMATS = Set.of("png", "jpeg", "webp");
+    private static final Set<String> SAFE_INHERITED_ENVIRONMENT = Set.of(
+            "COMSPEC", "DYLD_LIBRARY_PATH", "FONTCONFIG_FILE", "FONTCONFIG_PATH",
+            "LANG", "LC_ALL", "LD_LIBRARY_PATH", "MAGICK_CODER_FILTER_PATH",
+            "MAGICK_CODER_MODULE_PATH", "MAGICK_CONFIGURE_PATH", "MAGICK_FONT_PATH",
+            "MAGICK_HOME", "PATH", "PATHEXT", "SYSTEMROOT", "TZ", "WINDIR", "XDG_DATA_DIRS");
 
     private final Path managedRoot;
     private final String executable;
@@ -352,11 +358,12 @@ public class ImageProcessingTool implements UltimateTool {
             throws IOException, InterruptedException {
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(runtime.toFile()).redirectErrorStream(true);
-        builder.environment().put("MAGICK_TEMPORARY_PATH", runtime.toString());
-        builder.environment().put("HOME", runtime.toString());
-        builder.environment().put("TMPDIR", runtime.toString());
-        builder.environment().put("TMP", runtime.toString());
-        builder.environment().put("TEMP", runtime.toString());
+        restrictProcessEnvironment(builder.environment(), Map.of(
+                "MAGICK_TEMPORARY_PATH", runtime.toString(),
+                "HOME", runtime.toString(),
+                "TMPDIR", runtime.toString(),
+                "TMP", runtime.toString(),
+                "TEMP", runtime.toString()));
         Process process = builder.start();
         Thread drain = Thread.startVirtualThread(() -> {
             try (InputStream stream = process.getInputStream()) {
@@ -394,6 +401,19 @@ public class ImageProcessingTool implements UltimateTool {
                 }
             }
         }
+    }
+
+    static void restrictProcessEnvironment(Map<String, String> processEnvironment,
+            Map<String, String> requiredEnvironment) {
+        Map<String, String> inherited = Map.copyOf(processEnvironment);
+        processEnvironment.clear();
+        inherited.forEach((name, value) -> {
+            if (SAFE_INHERITED_ENVIRONMENT.contains(name.toUpperCase(Locale.ROOT))) {
+                processEnvironment.put(name, value);
+            }
+        });
+        // Private runtime values always win over host defaults.
+        processEnvironment.putAll(requiredEnvironment);
     }
 
     private static void cleanup(Path runtime) throws IOException {
