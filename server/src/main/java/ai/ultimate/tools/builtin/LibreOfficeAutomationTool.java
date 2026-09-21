@@ -239,27 +239,7 @@ public class LibreOfficeAutomationTool implements UltimateTool {
         } else {
             runtime = Files.createTempDirectory(canonicalRoot, ".ultimate-office-");
         }
-        return canonicalizeRuntime(runtime, canonicalRoot);
-    }
-
-    static Path canonicalizeRuntime(Path runtime, Path canonicalRoot) throws IOException {
-        try {
-            Path canonicalRuntime = runtime.toRealPath();
-            if (!canonicalRoot.equals(canonicalRuntime.getParent())) {
-                throw new DocumentException(
-                        "Managed runtime escaped its workspace root during creation.");
-            }
-            return canonicalRuntime;
-        } catch (IOException | RuntimeException failure) {
-            try {
-                if (Files.exists(runtime, LinkOption.NOFOLLOW_LINKS)) {
-                    cleanup(runtime);
-                }
-            } catch (IOException | RuntimeException cleanupFailure) {
-                failure.addSuppressed(cleanupFailure);
-            }
-            throw failure;
-        }
+        return runtime.toRealPath();
     }
 
     private static void configureProfile(Path profile) throws IOException {

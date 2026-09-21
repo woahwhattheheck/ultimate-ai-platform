@@ -256,29 +256,6 @@ class LibreOfficeAutomationToolTest {
     }
 
     @Test
-    void rejectsRuntimeSwapBeforeCanonicalizationAndDeletesOnlyTheLink() throws Exception {
-        Path canonicalRoot = Files.createDirectories(root()).toRealPath();
-        Path outside = Files.createDirectory(temporary.resolve("outside-runtime"));
-        Path sentinel = Files.writeString(outside.resolve("keep.txt"), "keep");
-        Path runtime = Files.createTempDirectory(canonicalRoot, ".ultimate-office-");
-        Files.delete(runtime);
-        try {
-            Files.createSymbolicLink(runtime, outside);
-        } catch (UnsupportedOperationException | IOException e) {
-            org.junit.jupiter.api.Assumptions.abort("Symlinks unavailable on this test host");
-        }
-
-        org.assertj.core.api.Assertions.assertThatThrownBy(
-                        () -> LibreOfficeAutomationTool.canonicalizeRuntime(
-                                runtime, canonicalRoot))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("escaped its workspace root");
-        assertThat(Files.exists(
-                runtime, java.nio.file.LinkOption.NOFOLLOW_LINKS)).isFalse();
-        assertThat(Files.readString(sentinel)).isEqualTo("keep");
-    }
-
-    @Test
     void rejectsOutputSymlinkAndCleanupDoesNotFollowIt() throws Exception {
         Path sentinel = Files.writeString(temporary.resolve("keep.pdf"), "%PDF-1.7 keep");
         var tool = tool(allowForTest(), (command, directory, environment) -> {

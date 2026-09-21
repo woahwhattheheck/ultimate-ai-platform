@@ -4,33 +4,23 @@
 `processDocuments`. It uses a host-installed `soffice` executable; it does not
 download or install LibreOffice at runtime.
 
-## Hard $150 session allocation gate for issue #9
+## Current acceptance status for issue #9
 
-Production wiring now includes `LibreOfficeJdbcComputeBudget`. `AiOrchestrator`
-places the authenticated chat `sessionId` into Spring AI `ToolContext`; both the
-Gemini and Ollama providers forward that hidden context with `.toolContext(...)`.
-Spring AI does not send this map to the model, so neither the model nor tool
-arguments can choose a session identity or a charge.
+The document engine is implemented. **The production $150/session-window billing
+integration remains pending the maintainer's authoritative session, tariff and
+window contract.** Current main's `ChatSession` tracks tokens; tool registration
+does not pass authenticated session context or a USD allocation ledger.
 
-Reservations are stored in PostgreSQL in `libreoffice_compute_budgets` and are
-performed with one atomic `INSERT ... ON CONFLICT ... WHERE` statement. The
-window is 30 minutes from the first reservation for a chat session. Concurrent
-requests and multiple application instances contend on the same session row.
-After 30 minutes, the next reservation atomically starts a new window.
-
-The default scheduler allocation is deliberately conservative rather than an
-attempt to infer a cloud invoice: each reserved LibreOffice process second is
-charged USD 0.625 of allocation. With the 60-second process ceiling, one
-operation reserves USD 37.50 and the maximum four-operation batch reserves
-exactly USD 150.00. Reservations are charged before any scratch directory or
-process exists and are not refunded after failure, so retries cannot bypass the
-cap. Any request that would take the current window above USD 150.00 is denied.
-Missing/invalid context, database failures and write contention fail closed.
-
-Direct MCP/tool invocations that do not arrive through a trusted server session
-remain denied. Deployments may replace `LibreOfficeComputeBudget` with a stricter
-allocator, but the tool always supplies an absolute USD 150.00 cap and never
-accepts a model-provided cost.
+The default tool therefore rejects every execution with `Budget denied`.
+A host-owned `LibreOfficeComputeBudget` Spring bean must atomically reserve the
+worst-case cost of the whole batch from a trusted `ToolContext`, including prior
+usage and concurrent reservations, with a hard cap of USD 150.00. Missing
+identity, expired windows, unknown rates and ledger failures must deny execution.
+The adapter must enforce the limit across serving instances and other included
+tools. Model arguments cannot supply the session identity, cost or credit.
+This interface alone does not implement a dollar ledger; a permissive adapter
+would invalidate the billing boundary. The tests use explicit fixtures, not real
+billing authorization.
 
 ## Inputs and results
 
@@ -91,10 +81,9 @@ worst-case runtime/resource allocation.
 
 ## Verification
 
-The normal unit suite exercises UTF-8 boundaries, batch validation, hidden tool
-context, hard-cap reservation math, ledger failure/contended-write denial,
-process start/failure/timeout/interruption, pipes filled beyond OS capacity,
-symbolic links and scratch cleanup. The dedicated
+The normal unit suite exercises UTF-8 boundaries, batch validation, budget denial,
+hidden tool context, process start/failure/timeout/interruption, pipes filled
+beyond OS capacity, symbolic links and scratch cleanup. The dedicated
 `LibreOffice document tests` workflow runs those tests plus real DOCX and XLSX
 generation, DOCX/XLSX-to-PDF conversion and PDF page extraction on an ordinary
 GitHub-hosted Ubuntu runner. It installs LibreOffice only on that runner.
