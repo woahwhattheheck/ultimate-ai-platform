@@ -6,21 +6,29 @@ download or install LibreOffice at runtime.
 
 ## Current acceptance status for issue #9
 
-The document engine is implemented. **The production $150/session-window billing
-integration remains pending the maintainer's authoritative session, tariff and
-window contract.** Current main's `ChatSession` tracks tokens; tool registration
-does not pass authenticated session context or a USD allocation ledger.
+The document engine and the LibreOffice-specific **USD 150/session-window hard
+allocation gate are implemented**. `AiOrchestrator` attaches the authenticated
+chat session identifier as server-owned Spring AI `ToolContext` metadata, and the
+tool-capable Ollama/Gemini providers forward that hidden context to tool calls.
+Model arguments cannot supply or override the session identity, allocation rate,
+or credit.
 
-The default tool therefore rejects every execution with `Budget denied`.
-A host-owned `LibreOfficeComputeBudget` Spring bean must atomically reserve the
-worst-case cost of the whole batch from a trusted `ToolContext`, including prior
-usage and concurrent reservations, with a hard cap of USD 150.00. Missing
-identity, expired windows, unknown rates and ledger failures must deny execution.
-The adapter must enforce the limit across serving instances and other included
-tools. Model arguments cannot supply the session identity, cost or credit.
-This interface alone does not implement a dollar ledger; a permissive adapter
-would invalidate the billing boundary. The tests use explicit fixtures, not real
-billing authorization.
+`LibreOfficeJdbcComputeBudget` is the production Spring bean. Migration
+`V18__create_libreoffice_compute_budgets.sql` provides the PostgreSQL ledger,
+and each reservation uses one atomic upsert against the trusted session id. The
+window is 30 minutes from its first reservation. At the configured conservative
+rate of USD 0.625 per reserved process second and the 60-second process ceiling,
+one document operation reserves USD 37.50 and the maximum four-document batch
+reserves exactly USD 150.00. Reservations are not refunded after process
+failure, so retries cannot bypass the cap. Concurrent reservations, exhausted
+allocation, missing/invalid session context, and database failures all deny
+execution before scratch files or LibreOffice processes are created.
+
+This ledger is intentionally scoped to this LibreOffice tool. It is an allocation
+guard for issue #9, not a claim that the application now has a provider-wide
+billing ledger or that USD 0.625/second is an observed provider invoice rate.
+Changing the session window or allocation rate is therefore an explicit host
+policy decision, while the USD 150 hard cap remains enforced by the adapter.
 
 ## Inputs and results
 
