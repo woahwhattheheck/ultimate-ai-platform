@@ -96,9 +96,11 @@ beyond OS capacity, symbolic links and scratch cleanup. The dedicated
 generation, DOCX/XLSX-to-PDF conversion and PDF page extraction on an ordinary
 GitHub-hosted Ubuntu runner. It installs LibreOffice only on that runner.
 
-Run the real smoke suite on an appropriately prepared host:
+Run the real smoke suite from `server/`, where the Maven wrapper and project POM
+live. From the repository root on an appropriately prepared host:
 
 ```sh
+cd server
 LIBREOFFICE_SMOKE=true ./mvnw -B -Dtest=LibreOfficeAutomationToolTest,LibreOfficeAutomationToolRegistryTest,LibreOfficeAutomationToolSmokeTest test
 ```
 
