@@ -72,8 +72,20 @@ returned, and no server path is exposed.
 
 The configured managed root and caller source workspace are canonicalized with
 `Path.toRealPath()`. Absolute inputs, traversal, paths resolving outside the
-source workspace, duplicate canonical inputs, symlinked managed roots, and
-inputs replaced between validation and staging are rejected.
+source workspace, duplicate canonical inputs, and symlinked managed roots are
+rejected. Validation retains
+each input's parent directory handle and captures its non-null directory/file
+identities, file size, and modification time. The original directory handle is
+used for the bounded read. Before opening the input and after reading it, the
+tool rejects a parent directory identity, file identity, size, or modification
+time that differs from validation. All retained input handles are closed even
+when validation or another image in the batch fails.
+
+This requires `SecureDirectoryStream` and stable file identities from the
+filesystem. Unsupported providers fail instead of falling back to a pathname
+read. These checks do not provide an atomic snapshot against a local process
+that continuously modifies a file or swaps and restores the same leaf between
+identity checks; source workspaces still require appropriate OS access control.
 
 Every request receives a generated `.ultimate-image-*` runtime directory under
 the managed root. Only generated staging and output names are used inside it.

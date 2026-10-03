@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.SecureDirectoryStream;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -84,6 +85,7 @@ public class ImageProcessingTool implements UltimateTool {
             @ToolParam(description = "Optional plain text watermark; empty string disables it")
             String watermark) {
         Path runtime = null;
+        List<ValidatedInput> inputs = new ArrayList<>();
         String result;
         try {
             String format = outputFormat == null ? "" : outputFormat.toLowerCase(Locale.ROOT);
@@ -97,16 +99,14 @@ public class ImageProcessingTool implements UltimateTool {
                         "Source workspace must be an existing directory below the managed root.");
             }
 
-            List<Path> inputs = new ArrayList<>();
             Set<Path> seen = new HashSet<>();
             for (String inputPath : inputPaths) {
                 Path input = resolveInput(workspace, inputPath);
-                if (!Files.isRegularFile(input, LinkOption.NOFOLLOW_LINKS)
-                        || Files.size(input) > MAX_INPUT_BYTES || !seen.add(input)) {
+                if (!seen.add(input)) {
                     throw new IllegalArgumentException(
                             "Inputs must be distinct regular files of at most 20 MiB each.");
                 }
-                inputs.add(input);
+                inputs.add(validateInputSecure(input));
             }
 
             Path createdRuntime = Files.createTempDirectory(root, ".ultimate-image-");
@@ -115,8 +115,7 @@ public class ImageProcessingTool implements UltimateTool {
             long totalOutputBytes = 0;
 
             for (int i = 0; i < inputs.size(); i++) {
-                Path original = inputs.get(i);
-                byte[] contents = readInputSecure(original);
+                byte[] contents = inputs.get(i).read();
 
                 Path stagedInput = runtime.resolve("input-" + i);
                 Files.write(stagedInput, contents);
@@ -167,6 +166,13 @@ public class ImageProcessingTool implements UltimateTool {
         } catch (Exception e) {
             result = error(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
         } finally {
+            for (ValidatedInput input : inputs) {
+                try {
+                    input.close();
+                } catch (IOException | RuntimeException e) {
+                    result = error("Input file handles could not be completely closed.");
+                }
+            }
             if (runtime != null) {
                 try {
                     cleanup(runtime);
@@ -260,16 +266,81 @@ public class ImageProcessingTool implements UltimateTool {
     }
 
     static byte[] readInputSecure(Path input) throws IOException {
+        try (ValidatedInput validated = validateInputSecure(input)) {
+            return validated.read();
+        }
+    }
+
+    private static ValidatedInput validateInputSecure(Path input) throws IOException {
         Path absolute = input.toAbsolutePath().normalize();
         Path parent = absolute.getParent();
         if (parent == null || absolute.getFileName() == null) {
             throw new IOException("Input path has no secure parent directory.");
         }
 
-        try (SecureDirectoryStream<Path> directory = openSecureDirectory(parent)) {
+        SecureDirectoryStream<Path> directory = openSecureDirectory(parent);
+        try {
+            Object directoryKey = directory.getFileAttributeView(BasicFileAttributeView.class)
+                    .readAttributes().fileKey();
+            BasicFileAttributes attributes = directory.getFileAttributeView(
+                    absolute.getFileName(), BasicFileAttributeView.class, LinkOption.NOFOLLOW_LINKS)
+                    .readAttributes();
+            if (!attributes.isRegularFile() || attributes.size() > MAX_INPUT_BYTES) {
+                throw new IllegalArgumentException(
+                        "Inputs must be distinct regular files of at most 20 MiB each.");
+            }
+            if (directoryKey == null || attributes.fileKey() == null) {
+                throw new IOException("Input filesystem does not provide stable file identities.");
+            }
+            return new ValidatedInput(absolute, directory, directoryKey, attributes);
+        } catch (IOException | RuntimeException failure) {
+            try {
+                directory.close();
+            } catch (IOException | RuntimeException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
+            throw failure;
+        }
+    }
+
+    private static final class ValidatedInput implements AutoCloseable {
+        private final Path path;
+        private final SecureDirectoryStream<Path> directory;
+        private final Object directoryKey;
+        private final BasicFileAttributes attributes;
+
+        private ValidatedInput(Path path, SecureDirectoryStream<Path> directory,
+                               Object directoryKey, BasicFileAttributes attributes) {
+            this.path = path;
+            this.directory = directory;
+            this.directoryKey = directoryKey;
+            this.attributes = attributes;
+        }
+
+        private void checkIdentity() throws IOException {
+            // Reopening is only a namespace check: input bytes always use the retained handle.
+            try (SecureDirectoryStream<Path> current = openSecureDirectory(path.getParent())) {
+                Object currentKey = current.getFileAttributeView(BasicFileAttributeView.class)
+                        .readAttributes().fileKey();
+                if (!directoryKey.equals(currentKey)) {
+                    throw new IOException("Input changed after validation.");
+                }
+            }
+            BasicFileAttributes current = directory.getFileAttributeView(
+                    path.getFileName(), BasicFileAttributeView.class, LinkOption.NOFOLLOW_LINKS)
+                    .readAttributes();
+            if (!current.isRegularFile() || !attributes.fileKey().equals(current.fileKey())
+                    || attributes.size() != current.size()
+                    || !attributes.lastModifiedTime().equals(current.lastModifiedTime())) {
+                throw new IOException("Input changed after validation.");
+            }
+        }
+
+        private byte[] read() throws IOException {
+            checkIdentity();
             Set<OpenOption> options = Set.of(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
             try (SeekableByteChannel channel =
-                         directory.newByteChannel(absolute.getFileName(), options);
+                         directory.newByteChannel(path.getFileName(), options);
                  InputStream stream = Channels.newInputStream(channel)) {
                 if (channel.size() > MAX_INPUT_BYTES) {
                     throw new IllegalArgumentException("Input grew beyond the 20 MiB limit.");
@@ -278,8 +349,14 @@ public class ImageProcessingTool implements UltimateTool {
                 if (contents.length > MAX_INPUT_BYTES) {
                     throw new IllegalArgumentException("Input grew beyond the 20 MiB limit.");
                 }
+                checkIdentity();
                 return contents;
             }
+        }
+
+        @Override
+        public void close() throws IOException {
+            directory.close();
         }
     }
 
