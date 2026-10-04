@@ -29,8 +29,9 @@ Example arguments for `processImages`:
 }
 ```
 
-Both dimensions must be 1–4096, or both zero to retain dimensions. With
-`crop=false`, resizing preserves aspect ratio and does not enlarge the image.
+Both dimensions must be 1–4096, or both zero with `crop=false` to retain
+dimensions. With `crop=false`, resizing preserves aspect ratio and does not
+enlarge the image.
 With `crop=true`, the image is resized to fill the target and cropped centrally.
 Brightness and saturation range from 0–200; 100 is neutral. Quality is 1–100.
 An empty watermark disables annotation. Watermarks reject controls and
