@@ -1,0 +1,163 @@
+{
+  "original_pull_request": "https://github.com/iyeanur6-cyber/ultimate-ai-platform/pull/41",
+  "issue": "https://github.com/iyeanur6-cyber/ultimate-ai-platform/issues/14",
+  "execution": {
+    "source_commit": "eacdf3e79ec07d8e3b8e805009f24a1b63fe7b58",
+    "source_tree": "89164450554ad7dfecabda04bda7be7f07ec3fdb",
+    "controller_commit": "10ec673a79878a169b27a0e92b125a77d6bf9d2a",
+    "run_id": "37202619930",
+    "tracked_changes": "",
+    "command": "./mvnw -B '-Dtest=ai.ultimate.tools.builtin.ImageProcessingToolTest,ai.ultimate.tools.builtin.ImageProcessingToolSecurityTest' test",
+    "suites": [
+      {
+        "name": "ai.ultimate.tools.builtin.ImageProcessingToolTest",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "1.2",
+        "cases": [
+          {
+            "name": "rejectsASymlinkedManagedRoot",
+            "seconds": "0.324",
+            "passed": true
+          },
+          {
+            "name": "neverReturnsPartialArtifactsWhenAnyBatchMemberFails",
+            "seconds": "0.016",
+            "passed": true
+          },
+          {
+            "name": "reportsMissingExecutableTimeoutAndInterruptionThenCleansRuntime",
+            "seconds": "0.005",
+            "passed": true
+          },
+          {
+            "name": "errorResponsesRedactManagedWorkspacePaths",
+            "seconds": "0.006",
+            "passed": true
+          },
+          {
+            "name": "errorResponseSanitizesEveryJsonForbiddenControlCharacter",
+            "seconds": "0.003",
+            "passed": true
+          },
+          {
+            "name": "rejectsInputReplacedWithExternalSymlinkAfterValidation",
+            "seconds": "0.004",
+            "passed": true
+          },
+          {
+            "name": "nativeImageMagickSmokeStripsMetadataAppliesWatermarkAndLeavesNoGeneratedFile",
+            "seconds": "0.264",
+            "passed": true
+          },
+          {
+            "name": "rejectsTraversalAbsolutePathsAndOutsideSymlinksBeforeExecution",
+            "seconds": "0.004",
+            "passed": true
+          },
+          {
+            "name": "nativeRunnerDrainsOutputWithoutDeadlockingAndEnforcesTimeout",
+            "seconds": "0.311",
+            "passed": true
+          },
+          {
+            "name": "rejectsEmptyWrongFormatOversizedAndOverAggregateOutputs",
+            "seconds": "0.058",
+            "passed": true
+          },
+          {
+            "name": "rejectsDuplicateAndOversizedInputs",
+            "seconds": "0.003",
+            "passed": true
+          },
+          {
+            "name": "rejectsDisguisedImageScriptsAndInvalidArguments",
+            "seconds": "0.003",
+            "passed": true
+          },
+          {
+            "name": "springDiscoversToolWithoutLaunchingNativeProcess",
+            "seconds": "0.161",
+            "passed": true
+          },
+          {
+            "name": "rejectsRuntimeSwapBeforeCanonicalizationAndDeletesOnlyTheLink",
+            "seconds": "0.003",
+            "passed": true
+          },
+          {
+            "name": "imageMagickChildDoesNotInheritUnrelatedServerSecrets",
+            "seconds": "0.002",
+            "passed": true
+          },
+          {
+            "name": "returnsBoundedBase64ArtifactsAndPurgesEveryGeneratedFile",
+            "seconds": "0.004",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "ai.ultimate.tools.builtin.ImageProcessingToolSecurityTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.018",
+        "cases": [
+          {
+            "name": "regularDirectoryReplacementCannotRedirectAnAlreadyValidatedBatchInput",
+            "seconds": "0.008",
+            "passed": true
+          },
+          {
+            "name": "regularFileReplacementCannotChangeAnAlreadyValidatedBatchInput",
+            "seconds": "0.004",
+            "passed": true
+          },
+          {
+            "name": "secureInputReadRejectsAncestorSymlinkReplacement",
+            "seconds": "0.004",
+            "passed": true
+          }
+        ]
+      }
+    ]
+  },
+  "runtime": {
+    "os": "Ubuntu 24.04",
+    "java": "Temurin 21.0.12.1+1-LTS",
+    "imagemagick": "7.1.2-31 Q16-HDRI x86_64",
+    "maven_reported_total": "01:16 min"
+  },
+  "source_blobs": {
+    "server/src/main/java/ai/ultimate/tools/builtin/ImageProcessingTool.java": "9437a633a4cf93e96dca4ed4f9d8475996be784b",
+    "server/src/test/java/ai/ultimate/tools/builtin/ImageProcessingToolTest.java": "7ece927a48ba337d0683698813664df03cdd7d55",
+    "server/src/test/java/ai/ultimate/tools/builtin/ImageProcessingToolSecurityTest.java": "e923e3482a0509b24217ded720cf03502fe525e1"
+  },
+  "workflow": {
+    "url": "https://github.com/woahwhattheheck/ultimate-ai-platform/actions/runs/37202619930",
+    "job_id": 111437217239,
+    "conclusion": "success",
+    "created_at": "2026-10-04T12:35:12Z",
+    "completed_by": "2026-10-04T12:36:49Z"
+  },
+  "artifact": {
+    "id": 11303143596,
+    "name": "image-current-runtime-relay17",
+    "size_in_bytes": 243156,
+    "provider_digest": "sha256:270c8c1bee049cdd777d571474ba156bdb58b9eed278713fa934a071d16f2c77",
+    "expires_at": "2026-11-03T12:36:41Z",
+    "url": "https://github.com/woahwhattheheck/ultimate-ai-platform/actions/runs/37202619930/artifacts/11303143596"
+  },
+  "limits": [
+    "Two maintained image classes only, not the entire Maven test suite or application integration workflow.",
+    "One native method executes the Java subprocess runner; the other executes ImageMagick processing and metadata/pixel checks.",
+    "Input replacement tests control the converter boundary while running the actual filesystem and retained-handle code.",
+    "The 350-test prior run remains historical at c4ded07beeb9f4f176ad58c182b97d7c21e66209.",
+    "No new benchmark, production deployment, maintainer acceptance, award or payment result.",
+    "Artifact digest is provided by GitHub, not independently recomputed here."
+  ]
+}

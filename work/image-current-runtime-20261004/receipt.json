@@ -1,0 +1,125 @@
+{
+  "source_commit": "eacdf3e79ec07d8e3b8e805009f24a1b63fe7b58",
+  "source_tree": "89164450554ad7dfecabda04bda7be7f07ec3fdb",
+  "controller_commit": "10ec673a79878a169b27a0e92b125a77d6bf9d2a",
+  "run_id": "37202619930",
+  "tracked_changes": "",
+  "command": "./mvnw -B '-Dtest=ai.ultimate.tools.builtin.ImageProcessingToolTest,ai.ultimate.tools.builtin.ImageProcessingToolSecurityTest' test",
+  "suites": [
+    {
+      "name": "ai.ultimate.tools.builtin.ImageProcessingToolTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "1.2",
+      "cases": [
+        {
+          "name": "rejectsASymlinkedManagedRoot",
+          "seconds": "0.324",
+          "passed": true
+        },
+        {
+          "name": "neverReturnsPartialArtifactsWhenAnyBatchMemberFails",
+          "seconds": "0.016",
+          "passed": true
+        },
+        {
+          "name": "reportsMissingExecutableTimeoutAndInterruptionThenCleansRuntime",
+          "seconds": "0.005",
+          "passed": true
+        },
+        {
+          "name": "errorResponsesRedactManagedWorkspacePaths",
+          "seconds": "0.006",
+          "passed": true
+        },
+        {
+          "name": "errorResponseSanitizesEveryJsonForbiddenControlCharacter",
+          "seconds": "0.003",
+          "passed": true
+        },
+        {
+          "name": "rejectsInputReplacedWithExternalSymlinkAfterValidation",
+          "seconds": "0.004",
+          "passed": true
+        },
+        {
+          "name": "nativeImageMagickSmokeStripsMetadataAppliesWatermarkAndLeavesNoGeneratedFile",
+          "seconds": "0.264",
+          "passed": true
+        },
+        {
+          "name": "rejectsTraversalAbsolutePathsAndOutsideSymlinksBeforeExecution",
+          "seconds": "0.004",
+          "passed": true
+        },
+        {
+          "name": "nativeRunnerDrainsOutputWithoutDeadlockingAndEnforcesTimeout",
+          "seconds": "0.311",
+          "passed": true
+        },
+        {
+          "name": "rejectsEmptyWrongFormatOversizedAndOverAggregateOutputs",
+          "seconds": "0.058",
+          "passed": true
+        },
+        {
+          "name": "rejectsDuplicateAndOversizedInputs",
+          "seconds": "0.003",
+          "passed": true
+        },
+        {
+          "name": "rejectsDisguisedImageScriptsAndInvalidArguments",
+          "seconds": "0.003",
+          "passed": true
+        },
+        {
+          "name": "springDiscoversToolWithoutLaunchingNativeProcess",
+          "seconds": "0.161",
+          "passed": true
+        },
+        {
+          "name": "rejectsRuntimeSwapBeforeCanonicalizationAndDeletesOnlyTheLink",
+          "seconds": "0.003",
+          "passed": true
+        },
+        {
+          "name": "imageMagickChildDoesNotInheritUnrelatedServerSecrets",
+          "seconds": "0.002",
+          "passed": true
+        },
+        {
+          "name": "returnsBoundedBase64ArtifactsAndPurgesEveryGeneratedFile",
+          "seconds": "0.004",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "ai.ultimate.tools.builtin.ImageProcessingToolSecurityTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.018",
+      "cases": [
+        {
+          "name": "regularDirectoryReplacementCannotRedirectAnAlreadyValidatedBatchInput",
+          "seconds": "0.008",
+          "passed": true
+        },
+        {
+          "name": "regularFileReplacementCannotChangeAnAlreadyValidatedBatchInput",
+          "seconds": "0.004",
+          "passed": true
+        },
+        {
+          "name": "secureInputReadRejectsAncestorSymlinkReplacement",
+          "seconds": "0.004",
+          "passed": true
+        }
+      ]
+    }
+  ]
+}
