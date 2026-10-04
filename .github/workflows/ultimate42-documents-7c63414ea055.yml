@@ -1,0 +1,60 @@
+name: UltimateAI 42 real documents
+
+on:
+  push:
+    branches:
+      - 'validation/ultimate42-documents-7c63414ea055'
+
+permissions:
+  contents: read
+
+jobs:
+  document-smoke:
+    if: github.repository == 'woahwhattheheck/ultimate-ai-platform'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          ref: '29b882f839c95c765bd3f1acd243b9302d305b2c'
+          persist-credentials: false
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+          cache-dependency-path: server/pom.xml
+      - name: Install document runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-calc libreoffice-draw poppler-utils
+      - name: Record source and runtime versions
+        working-directory: server
+        run: |
+          test "$(git rev-parse HEAD)" = "29b882f839c95c765bd3f1acd243b9302d305b2c"
+          chmod +x mvnw
+          mkdir -p target/relay-documents
+          {
+            git rev-parse HEAD
+            java -version
+            ./mvnw -version
+            soffice --version
+            pdfinfo -v
+            pdftotext -v
+          } 2>&1 | tee target/relay-documents/runtime-versions.txt
+      - name: Run the two real document smoke methods
+        working-directory: server
+        env:
+          LIBREOFFICE_SMOKE: 'true'
+        run: |
+          /usr/bin/time -p -o target/relay-documents/elapsed.txt \
+            ./mvnw -B -Dtest=LibreOfficeAutomationToolSmokeTest test
+      - name: Upload document results
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ultimate42-documents-7c63414ea055
+          path: |
+            server/target/surefire-reports/
+            server/target/relay-documents/
+          if-no-files-found: warn
