@@ -4,6 +4,27 @@
 `processDocuments`. It uses a host-installed `soffice` executable; it does not
 download or install LibreOffice at runtime.
 
+## Host prerequisites
+
+Use Java 21 for the server and the Maven wrapper in `server/`. Install a matching
+LibreOffice Writer, Calc and Draw runtime on the server host, with `soffice`
+available on its `PATH`. PDF page selection requires Draw's `draw_pdf_import`
+filter as well as its PDF export filter.
+
+On Debian/Ubuntu, the focused document workflow installs these packages:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+  libreoffice-writer libreoffice-calc libreoffice-draw poppler-utils
+```
+
+`poppler-utils` supplies `pdfinfo` and `pdftotext` for the real document tests.
+Use LibreOffice components from the same distribution/build; a partial bundle
+may provide document creation and PDF export while lacking PDF import.
+The application does not install these host dependencies, and the repository's
+Docker Compose file provisions only PostgreSQL and Redis.
+
 ## Current acceptance status for issue #9
 
 The document engine and the LibreOffice-specific **USD 150/session-window hard
