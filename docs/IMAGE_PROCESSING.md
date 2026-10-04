@@ -117,3 +117,35 @@ validation, output-format verification, per-image and aggregate response limits,
 batch atomicity, symlink replacement, timeout, interruption, process pipe
 draining, root confinement, and cleanup after success and failure. A native smoke
 test runs when ImageMagick 7 is installed and otherwise skips explicitly.
+
+## Recorded supported-runtime execution
+
+On October 4, 2026, [run 37202619930](https://github.com/woahwhattheheck/ultimate-ai-platform/actions/runs/37202619930) executed the two maintained image test classes against exact source `eacdf3e79ec07d8e3b8e805009f24a1b63fe7b58`, including the input-identity repair at `5d53b0b8`. The run completed successfully on Ubuntu 24.04 with Temurin Java 21.0.12.1 and the existing pinned official ImageMagick 7.1.2-31 distribution.
+
+| Maintained class | Tests | Failures | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| ImageProcessingToolTest | 16 | 0 | 0 | 0 |
+| ImageProcessingToolSecurityTest | 3 | 0 | 0 | 0 |
+| Total | 19 | 0 | 0 | 0 |
+
+The regular-directory and regular-file replacement tests reach the actual retained input-handle checks during a two-image batch. They require the replacement to be rejected before a second converter call and verify runtime cleanup. These cases control the converter boundary while using the actual filesystem and product validation/read path.
+
+Both maintained native methods executed. One exercises the real Java subprocess runner, including pipe draining and timeout. The other invokes ImageMagick, compares plain and watermarked output pixels, verifies stripped metadata, and checks that generated runtime files are removed. Spring component discovery and the existing validation, output-limit and cleanup cases also passed.
+
+Reproduce from `server` with the documented native prerequisites installed:
+
+```sh
+./mvnw -B '-Dtest=ai.ultimate.tools.builtin.ImageProcessingToolTest,ai.ultimate.tools.builtin.ImageProcessingToolSecurityTest' test
+```
+
+The runner checked source tree `89164450554ad7dfecabda04bda7be7f07ec3fdb` before execution and required unchanged tracked files afterward. The exercised product and maintained test blobs are:
+
+- Product: `9437a633a4cf93e96dca4ed4f9d8475996be784b`.
+- ImageProcessingToolTest: `7ece927a48ba337d0683698813664df03cdd7d55`.
+- ImageProcessingToolSecurityTest: `e923e3482a0509b24217ded720cf03502fe525e1`.
+
+[Raw job log](https://github.com/woahwhattheheck/ultimate-ai-platform/blob/baf81a1f5e4be41e0ea8bbe4c2ac0b09844feadc/work/image-current-runtime-20261004/job.log), [per-case receipt](https://github.com/woahwhattheheck/ultimate-ai-platform/blob/baf81a1f5e4be41e0ea8bbe4c2ac0b09844feadc/work/image-current-runtime-20261004/receipt.json), and [provenance](https://github.com/woahwhattheheck/ultimate-ai-platform/blob/baf81a1f5e4be41e0ea8bbe4c2ac0b09844feadc/work/image-current-runtime-20261004/provenance.json) are retained on the separate evidence branch. Controller commit `10ec673a79878a169b27a0e92b125a77d6bf9d2a` is distinct from the tested product commit. The original contribution includes no execution-workflow change.
+
+The [GitHub artifact](https://github.com/woahwhattheheck/ultimate-ai-platform/actions/runs/37202619930/artifacts/11303143596) contains the original Surefire XML, source manifest and runtime logs: 243,156 bytes, provider-reported SHA256 `270c8c1bee049cdd777d571474ba156bdb58b9eed278713fa934a071d16f2c77`, with configured expiry November 3, 2026. The committed log and receipts remain available independently of that artifact.
+
+This is current-source evidence for the two maintained image classes. The earlier 350-test whole-project run at `c4ded07beeb9f4f176ad58c182b97d7c21e66209` remains historical; it was not rerun or attributed to the newer repair. This continuation makes no new benchmark, complete application-CI, deployment, maintainer-acceptance or payment claim.
