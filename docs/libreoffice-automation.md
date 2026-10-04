@@ -128,6 +128,50 @@ LIBREOFFICE_SMOKE=true ./mvnw -B -Dtest=LibreOfficeAutomationToolTest,LibreOffic
 The real smoke tests are skipped unless `LIBREOFFICE_SMOKE=true`; no model
 provider or database is required for this focused suite.
 
+## Recorded real-document execution
+
+[Run 37185385304](https://github.com/woahwhattheheck/ultimate-ai-platform/actions/runs/37185385304)
+completed successfully on 2026-10-04. The job explicitly checked out and verified
+product source `29b882f839c95c765bd3f1acd243b9302d305b2c` before execution.
+Its validation-workflow commit was
+`372e12309339b0502a532405060da29088beea06`; that controller is separate from the
+product checkout.
+
+The existing `LibreOfficeAutomationToolSmokeTest` ran on Ubuntu 24.04.5 with
+Temurin Java 21.0.12.1, Maven 3.9.16, LibreOffice Writer/Calc/Draw 24.2.7.2 and
+Poppler 24.02.0. From `server/`, the selected command was:
+
+```sh
+LIBREOFFICE_SMOKE=true ./mvnw -B -Dtest=LibreOfficeAutomationToolSmokeTest test
+```
+
+Result: **2 tests, 0 failures, 0 errors, 0 skipped**; Maven reported
+`BUILD SUCCESS`. The test class took 2.684 seconds. This is one functional run,
+not a throughput measurement.
+
+The two maintained methods verify:
+
+- TXT-to-DOCX content, DOCX-to-PDF text, CSV-to-XLSX content, preservation of a
+  formula-like value as text, and XLSX-to-PDF text.
+- A real multipage PDF, extraction of one selected page with the expected text,
+  and removal of the managed request files after both scenarios.
+
+The complete-runtime run resolves the two previously reported smoke failures
+from the partial LibreOffice runtime and constrained execution host. It does not
+retroactively change those earlier results.
+
+Evidence: [job 111386107091](https://github.com/woahwhattheheck/ultimate-ai-platform/actions/runs/37185385304/job/111386107091),
+artifact `ultimate42-documents-7c63414ea055` (ID `11296583589`, 11,686 bytes),
+provider-reported SHA-256
+`ab539e281b21aef6a3343ce2804e31f0cdf7fbfc82bde7fed7d2836a83de1db6`.
+The artifact includes JUnit results and recorded source/runtime details.
+
+This selected smoke fixture uses its permissive test budget adapter. It does
+not validate PostgreSQL reservation concurrency, production billing, provider
+tool invocation, the complete unit suite, or all application CI. Historical
+successful runs at `5a9118de310b905243a19a5aa93ec5f475e6960e` remain historical
+evidence and must not be described as validation of later source.
+
 References: [LibreOffice command parameters](https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html),
 [conversion filters](https://help.libreoffice.org/latest/en-US/text/shared/guide/convertfilters.html),
 [PDF page export](https://help.libreoffice.org/latest/en-US/text/shared/guide/pdf_params.html),
